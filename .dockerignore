@@ -1,0 +1,17 @@
+.git/
+.venv/
+__pycache__/
+*.pyc
+.env
+.env.*
+doc/
+CLAUDE.md
+ZAZA_ARCHITECTURE.md
+.claude/
+.coverage
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+*.egg-info/
+dist/
+build/

@@ -4,11 +4,13 @@ import os
 from pathlib import Path
 
 # Directories
-CACHE_DIR = Path.home() / ".zaza" / "cache"
+# Docker override: set ZAZA_CACHE_DIR to change cache location (e.g., /cache in Docker)
+CACHE_DIR = Path(os.getenv("ZAZA_CACHE_DIR", str(Path.home() / ".zaza" / "cache")))
 PREDICTIONS_DIR = CACHE_DIR / "predictions"
 
 # PKScreener Docker
-PKSCREENER_CONTAINER = "pkscreener"
+# Docker override: set PKSCREENER_CONTAINER to change the PKScreener container name
+PKSCREENER_CONTAINER = os.getenv("PKSCREENER_CONTAINER", "pkscreener")
 
 # SEC EDGAR
 EDGAR_USER_AGENT = "Zaza/1.0 (zaza-mcp@example.com)"
