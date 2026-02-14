@@ -1,0 +1,38 @@
+# Zaza MCP Server — Docker Compose
+#
+# Usage:
+#   docker compose up -d          # Start both services
+#   docker compose ps             # Check status
+#   docker compose down           # Stop both services
+#   docker compose logs zaza      # View Zaza logs
+
+services:
+  zaza:
+    build:
+      context: .
+      target: runtime
+    # stdin_open (-i) is required for MCP stdio transport —
+    # Claude Code sends JSON-RPC requests over stdin
+    stdin_open: true
+    volumes:
+      # Persistent cache across container restarts (SQLite-backed diskcache)
+      - zaza-cache:/cache
+      # Docker socket for PKScreener docker exec (read-only)
+      - /var/run/docker.sock:/var/run/docker.sock:ro
+    env_file: .env                # REDDIT_CLIENT_ID, FRED_API_KEY, etc.
+    depends_on:
+      - pkscreener
+
+  pkscreener:
+    image: pkjmesra/pkscreener:latest
+    container_name: pkscreener
+    entrypoint: ["sleep", "infinity"]
+    environment:
+      - PKSCREENER_DOCKER=1
+    volumes:
+      - pkscreener-data:/PKScreener-main/actions_data
+    restart: unless-stopped
+
+volumes:
+  zaza-cache:
+  pkscreener-data:

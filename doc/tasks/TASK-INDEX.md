@@ -4,11 +4,11 @@
 
 | Metric | Value |
 |--------|-------|
-| **Total Tasks** | 28 |
-| **Small** | 7 (13-20h) |
-| **Medium** | 14 (60-96h) |
+| **Total Tasks** | 32 |
+| **Small** | 10 (22-32h) |
+| **Medium** | 15 (64-102h) |
 | **Large** | 7 (66-100h) |
-| **Estimated Total** | ~139-216 hours |
+| **Estimated Total** | ~152-234 hours |
 | **Status** | All PENDING |
 
 ---
@@ -85,6 +85,21 @@ Wiring, behavioral config, setup, and testing.
 
 ---
 
+## Phase 5: Docker Containerization
+
+Dockerize the entire Zaza MCP server stack. Can run in parallel with Phase 4 once config module exists.
+
+| ID | Title | File | Complexity | Hours | Dependencies | Status |
+|----|-------|------|:----------:|:-----:|:------------:|:------:|
+| TASK-029 | Add Docker Env Var Overrides to Config | [TASK-029](TASK-029-config-docker-env-overrides.md) | Small | 1-2h | TASK-002 | COMPLETED |
+| TASK-030 | Create Multi-Stage Dockerfile | [TASK-030](TASK-030-dockerfile-multistage-build.md) | Medium | 4-6h | TASK-029 | COMPLETED |
+| TASK-031 | Create Docker Compose & Orchestration Config | [TASK-031](TASK-031-docker-compose-orchestration.md) | Small | 2-3h | TASK-030 | COMPLETED |
+| TASK-032 | Create Docker Setup Script & Verification | [TASK-032](TASK-032-docker-setup-script-verification.md) | Small | 2-3h | TASK-029, TASK-030, TASK-031 | COMPLETED |
+
+**Phase 5 Total: ~9-14 hours**
+
+---
+
 ## Dependency Graph
 
 ```
@@ -109,6 +124,9 @@ Phase 4 (after all Phase 3):
   All Phase 3 → TASK-025 → TASK-027
   All Phase 3 → TASK-026
   All tools → TASK-028
+
+Phase 5 (after TASK-002, parallel with Phases 3-4):
+  TASK-002 → TASK-029 → TASK-030 → TASK-031 → TASK-032
 ```
 
 ## Recommended Implementation Order
@@ -126,3 +144,5 @@ Phase 4 (after all Phase 3):
 **Sprint 6** (backtesting + screener + browser): TASK-022, 023, 024
 
 **Sprint 7** (integration): TASK-025, 026, 027, 028
+
+**Sprint 8** (Docker): TASK-029 → 030 → 031, 032 (parallel)

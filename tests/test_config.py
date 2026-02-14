@@ -1,8 +1,10 @@
 """Tests for the configuration module."""
 
+import importlib
 from pathlib import Path
 from unittest.mock import patch
 
+import zaza.config as config_module
 from zaza.config import (
     CACHE_DIR,
     CACHE_TTL,
@@ -59,3 +61,47 @@ def test_has_fred_key_true() -> None:
 @patch.dict("os.environ", {}, clear=True)
 def test_has_fred_key_false() -> None:
     assert has_fred_key() is False
+
+
+def test_cache_dir_env_override(monkeypatch: object) -> None:
+    """CACHE_DIR uses ZAZA_CACHE_DIR when set."""
+    monkeypatch.setenv("ZAZA_CACHE_DIR", "/tmp/test-zaza-cache")  # type: ignore[union-attr]
+    importlib.reload(config_module)
+    assert config_module.CACHE_DIR == Path("/tmp/test-zaza-cache")
+    # Clean up: restore default
+    monkeypatch.delenv("ZAZA_CACHE_DIR", raising=False)  # type: ignore[union-attr]
+    importlib.reload(config_module)
+
+
+def test_cache_dir_default(monkeypatch: object) -> None:
+    """CACHE_DIR defaults to ~/.zaza/cache/ when env var is unset."""
+    monkeypatch.delenv("ZAZA_CACHE_DIR", raising=False)  # type: ignore[union-attr]
+    importlib.reload(config_module)
+    assert config_module.CACHE_DIR == Path.home() / ".zaza" / "cache"
+
+
+def test_predictions_dir_follows_cache_dir(monkeypatch: object) -> None:
+    """PREDICTIONS_DIR is always CACHE_DIR / predictions."""
+    monkeypatch.setenv("ZAZA_CACHE_DIR", "/tmp/test-pred-cache")  # type: ignore[union-attr]
+    importlib.reload(config_module)
+    assert config_module.PREDICTIONS_DIR == Path("/tmp/test-pred-cache/predictions")
+    # Clean up
+    monkeypatch.delenv("ZAZA_CACHE_DIR", raising=False)  # type: ignore[union-attr]
+    importlib.reload(config_module)
+
+
+def test_pkscreener_container_env_override(monkeypatch: object) -> None:
+    """PKSCREENER_CONTAINER uses env var when set."""
+    monkeypatch.setenv("PKSCREENER_CONTAINER", "my-pkscreener")  # type: ignore[union-attr]
+    importlib.reload(config_module)
+    assert config_module.PKSCREENER_CONTAINER == "my-pkscreener"
+    # Clean up
+    monkeypatch.delenv("PKSCREENER_CONTAINER", raising=False)  # type: ignore[union-attr]
+    importlib.reload(config_module)
+
+
+def test_pkscreener_container_default(monkeypatch: object) -> None:
+    """PKSCREENER_CONTAINER defaults to 'pkscreener'."""
+    monkeypatch.delenv("PKSCREENER_CONTAINER", raising=False)  # type: ignore[union-attr]
+    importlib.reload(config_module)
+    assert config_module.PKSCREENER_CONTAINER == "pkscreener"
