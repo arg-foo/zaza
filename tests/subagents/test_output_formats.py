@@ -1,6 +1,6 @@
 """Tests for sub-agent output format validation (TASK-037).
 
-Validates that CLAUDE.md sub-agent templates specify proper output format
+Validates that sub-agent files in .claude/agents/ specify proper output format
 structures per the prompt-pattern requirements:
 
 1. ROLE: "You are a financial research sub-agent with access to Zaza MCP tools."
@@ -27,6 +27,7 @@ import pytest
 
 PROJECT_ROOT = Path(__file__).resolve().parents[2]
 CLAUDE_MD_PATH = PROJECT_ROOT / "CLAUDE.md"
+AGENTS_DIR = PROJECT_ROOT / ".claude" / "agents"
 
 EXPECTED_SUBAGENTS = [
     "TA",
@@ -40,6 +41,20 @@ EXPECTED_SUBAGENTS = [
     "Prediction",
     "Backtesting",
 ]
+
+# Map from display name to agent file stem
+SUBAGENT_FILE_MAP: dict[str, str] = {
+    "TA": "ta",
+    "Comparative": "comparative",
+    "Filings": "filings",
+    "Discovery": "discovery",
+    "Browser": "browser",
+    "Options": "options",
+    "Sentiment": "sentiment",
+    "Macro": "macro",
+    "Prediction": "prediction",
+    "Backtesting": "backtesting",
+}
 
 # Sub-agents that MUST include a disclaimer in their template
 SUBAGENTS_REQUIRING_DISCLAIMER = {
@@ -77,26 +92,48 @@ def _extract_prompt_pattern(delegation_section: str) -> str:
     return match.group(1)
 
 
-def _extract_subagent_templates(delegation_section: str) -> dict[str, str]:
-    """Extract individual sub-agent template blocks.
+def _read_agent_file(stem: str) -> str:
+    """Read an agent .md file and return its full content."""
+    agent_path = AGENTS_DIR / f"{stem}.md"
+    if not agent_path.exists():
+        return ""
+    return agent_path.read_text(encoding="utf-8")
 
-    Returns a dict mapping sub-agent name to its full <subagent> block.
-    """
+
+def _extract_agent_body(content: str) -> str:
+    """Extract the body text (after YAML frontmatter) from an agent file."""
+    match = re.match(r"^---\s*\n.*?\n---\s*\n(.*)", content, re.DOTALL)
+    if match:
+        return match.group(1)
+    return content
+
+
+def _extract_agent_frontmatter(content: str) -> str:
+    """Extract the YAML frontmatter from an agent file."""
+    match = re.match(r"^---\s*\n(.*?)\n---", content, re.DOTALL)
+    if match:
+        return match.group(1)
+    return ""
+
+
+def _extract_subagent_templates() -> dict[str, str]:
+    """Read all 10 agent .md files and return a dict mapping display name to body text."""
     templates: dict[str, str] = {}
-    pattern = r'<subagent\s+name="(\w+)"[^>]*>(.*?)</subagent>'
-    for match in re.finditer(pattern, delegation_section, re.DOTALL):
-        name = match.group(1)
-        body = match.group(2)
-        templates[name] = body
+    for display_name, file_stem in SUBAGENT_FILE_MAP.items():
+        content = _read_agent_file(file_stem)
+        if content:
+            templates[display_name] = _extract_agent_body(content)
     return templates
 
 
-def _extract_template_text(subagent_block: str) -> str:
-    """Extract just the <template> content from a sub-agent block."""
-    match = re.search(r"<template>(.*?)</template>", subagent_block, re.DOTALL)
-    if match:
-        return match.group(1)
-    return subagent_block
+def _extract_subagent_full_content() -> dict[str, str]:
+    """Read all 10 agent .md files and return a dict mapping display name to full content."""
+    contents: dict[str, str] = {}
+    for display_name, file_stem in SUBAGENT_FILE_MAP.items():
+        content = _read_agent_file(file_stem)
+        if content:
+            contents[display_name] = content
+    return contents
 
 
 # ---------------------------------------------------------------------------
@@ -123,18 +160,21 @@ def prompt_pattern(delegation_section: str) -> str:
 
 
 @pytest.fixture(scope="module")
-def subagent_templates(delegation_section: str) -> dict[str, str]:
-    """Map of sub-agent name to full subagent block."""
-    return _extract_subagent_templates(delegation_section)
+def subagent_templates() -> dict[str, str]:
+    """Map of sub-agent display name to template body text from .claude/agents/*.md."""
+    return _extract_subagent_templates()
 
 
 @pytest.fixture(scope="module")
 def template_texts(subagent_templates: dict[str, str]) -> dict[str, str]:
-    """Map of sub-agent name to just the template text."""
-    return {
-        name: _extract_template_text(block)
-        for name, block in subagent_templates.items()
-    }
+    """Map of sub-agent name to just the template text (alias for subagent_templates)."""
+    return subagent_templates
+
+
+@pytest.fixture(scope="module")
+def subagent_full_content() -> dict[str, str]:
+    """Map of sub-agent name to full file content (including frontmatter)."""
+    return _extract_subagent_full_content()
 
 
 # ---------------------------------------------------------------------------
@@ -291,18 +331,9 @@ class TestTemplateRequiredSections:
         self,
         subagent_name: str,
         template_texts: dict[str, str],
-        subagent_templates: dict[str, str],
     ) -> None:
-        """Each template includes error handling or graceful degradation instructions.
-
-        Checks both the <template> text and the full <subagent> block, since
-        some sub-agents place error handling guidance outside the template
-        (e.g., in the delegation-level <error-handling> section that applies
-        to all sub-agents).
-        """
+        """Each template includes error handling or graceful degradation instructions."""
         text = template_texts.get(subagent_name, "")
-        block = subagent_templates.get(subagent_name, "")
-        combined = text + "\n" + block
         if not text:
             pytest.skip(f"Sub-agent '{subagent_name}' not found")
 
@@ -326,7 +357,7 @@ class TestTemplateRequiredSections:
             r"if.*provided",
         ]
         has_error_handling = any(
-            re.search(pattern, combined, re.IGNORECASE)
+            re.search(pattern, text, re.IGNORECASE)
             for pattern in error_patterns
         )
         assert has_error_handling, (
@@ -682,30 +713,53 @@ class TestDelegationStructure:
             "Delegation section should include <fallback-rules>"
         )
 
-    def test_each_subagent_has_triggers(
+    def test_each_agent_file_has_frontmatter(
         self,
-        subagent_templates: dict[str, str],
+        subagent_full_content: dict[str, str],
     ) -> None:
-        """Each sub-agent block includes trigger examples."""
-        for name, block in subagent_templates.items():
-            has_triggers = bool(re.search(r"<triggers>", block))
-            assert has_triggers, (
-                f"Sub-agent '{name}' should include <triggers> section"
+        """Each agent file includes YAML frontmatter with required fields."""
+        for name, content in subagent_full_content.items():
+            frontmatter = _extract_agent_frontmatter(content)
+            assert frontmatter, (
+                f"Agent '{name}' should include YAML frontmatter"
+            )
+            assert re.search(r"name:", frontmatter), (
+                f"Agent '{name}' frontmatter should include 'name' field"
+            )
+            assert re.search(r"description:", frontmatter), (
+                f"Agent '{name}' frontmatter should include 'description' field"
+            )
+            assert re.search(r"model:", frontmatter), (
+                f"Agent '{name}' frontmatter should include 'model' field"
             )
 
-    def test_each_subagent_has_use_and_skip(
+    def test_each_agent_has_trigger_info_in_description(
         self,
-        subagent_templates: dict[str, str],
+        subagent_full_content: dict[str, str],
     ) -> None:
-        """Each sub-agent trigger section includes use and skip examples."""
-        for name, block in subagent_templates.items():
-            has_use = bool(re.search(r"<use>", block))
-            has_skip = bool(re.search(r"<skip>", block))
-            assert has_use, (
-                f"Sub-agent '{name}' triggers should include <use> examples"
+        """Each agent file includes trigger/usage info in description."""
+        for name, content in subagent_full_content.items():
+            frontmatter = _extract_agent_frontmatter(content)
+            has_trigger_info = bool(
+                re.search(r"(trigger|use this agent|PROACTIVELY)", frontmatter, re.IGNORECASE)
+            )
+            assert has_trigger_info, (
+                f"Agent '{name}' description should include trigger/usage info"
+            )
+
+    def test_each_agent_has_skip_guidance(
+        self,
+        subagent_full_content: dict[str, str],
+    ) -> None:
+        """Each agent file includes guidance on when NOT to use it."""
+        for name, content in subagent_full_content.items():
+            frontmatter = _extract_agent_frontmatter(content)
+            has_skip = bool(
+                re.search(r"(do not use|handle.*inline|don't use|never.*inline)", frontmatter, re.IGNORECASE)
             )
             assert has_skip, (
-                f"Sub-agent '{name}' triggers should include <skip> examples"
+                f"Agent '{name}' description should include skip guidance "
+                f"(when NOT to use this agent)"
             )
 
 
@@ -735,18 +789,6 @@ class TestContextBudgets:
                 rf"\b{name}\b", budgets_text
             ), (
                 f"Sub-agent '{name}' missing from context-budgets table"
-            )
-
-    def test_budget_attr_on_subagent_tags(
-        self,
-        subagent_templates: dict[str, str],
-        delegation_section: str,
-    ) -> None:
-        """Each sub-agent tag has a budget attribute."""
-        for name in EXPECTED_SUBAGENTS:
-            pattern = rf'<subagent\s+name="{name}"[^>]*budget='
-            assert re.search(pattern, delegation_section), (
-                f"Sub-agent '{name}' tag should have a budget= attribute"
             )
 
 
@@ -797,12 +839,12 @@ class TestPredictionSubagentSpecific:
 
     def test_prediction_never_inline(
         self,
-        subagent_templates: dict[str, str],
+        subagent_full_content: dict[str, str],
     ) -> None:
         """Prediction sub-agent is marked as ALWAYS delegated, never inline."""
-        block = subagent_templates.get("Prediction", "")
+        content = subagent_full_content.get("Prediction", "")
         has_always_delegate = bool(
-            re.search(r"ALWAYS.*delegate|NEVER.*inline|never.*skip", block, re.IGNORECASE)
+            re.search(r"ALWAYS.*delegate|NEVER.*inline|never.*skip|must ALWAYS", content, re.IGNORECASE)
         )
         assert has_always_delegate, (
             "Prediction sub-agent should be marked as ALWAYS delegated"

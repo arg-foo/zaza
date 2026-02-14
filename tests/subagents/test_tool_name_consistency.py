@@ -1,10 +1,10 @@
 """Tests for sub-agent tool name consistency (TASK-037).
 
-Cross-references tool names referenced in CLAUDE.md delegation templates
+Cross-references tool names referenced in agent files (.claude/agents/*.md)
 against actual MCP tool registrations in the server. Verifies:
-- Every tool name in CLAUDE.md delegation section exists in the server registry
-- No typos or mismatches between CLAUDE.md references and actual tool names
-- All 10 sub-agent templates reference only valid tool names
+- Every tool name in CLAUDE.md tools section exists in the server registry
+- No typos or mismatches between agent file references and actual tool names
+- All 10 sub-agent files reference only valid tool names
 - The tools section in CLAUDE.md is consistent with the registered tools
 
 All external dependencies are mocked (no live calls).
@@ -23,9 +23,11 @@ import pytest
 
 PROJECT_ROOT = Path(__file__).resolve().parents[2]
 CLAUDE_MD_PATH = PROJECT_ROOT / "CLAUDE.md"
+AGENTS_DIR = PROJECT_ROOT / ".claude" / "agents"
 TOOLS_DIR = PROJECT_ROOT / "src" / "zaza" / "tools"
 
-# The 10 sub-agents defined in CLAUDE.md
+# The 10 financial sub-agents defined as .claude/agents/*.md files
+# Maps display name (used in tests) to filename stem
 EXPECTED_SUBAGENTS = [
     "TA",
     "Comparative",
@@ -38,6 +40,20 @@ EXPECTED_SUBAGENTS = [
     "Prediction",
     "Backtesting",
 ]
+
+# Map from display name to agent file stem
+SUBAGENT_FILE_MAP: dict[str, str] = {
+    "TA": "ta",
+    "Comparative": "comparative",
+    "Filings": "filings",
+    "Discovery": "discovery",
+    "Browser": "browser",
+    "Options": "options",
+    "Sentiment": "sentiment",
+    "Macro": "macro",
+    "Prediction": "prediction",
+    "Backtesting": "backtesting",
+}
 
 # Sub-agents that MUST include a disclaimer in their template
 SUBAGENTS_REQUIRING_DISCLAIMER = {
@@ -66,50 +82,31 @@ def _extract_tools_section(content: str) -> str:
     return match.group(1)
 
 
-def _extract_delegation_section(content: str) -> str:
-    """Extract the <delegation> section from CLAUDE.md."""
-    match = re.search(r"<delegation>(.*?)</delegation>", content, re.DOTALL)
-    assert match, "Could not find <delegation> section in CLAUDE.md"
-    return match.group(1)
-
-
 def _extract_tool_names_from_tools_section(tools_section: str) -> set[str]:
     """Extract all tool names from <tool name="..." /> entries."""
     return set(re.findall(r'<tool\s+name="(\w+)"', tools_section))
 
 
-def _extract_tool_names_from_delegation(delegation_section: str) -> set[str]:
-    """Extract all tool names referenced in the delegation section.
-
-    Looks for patterns like:
-    - get_price_snapshot (standalone tool names)
-    - get_price_snapshot(ticker=...) (tool calls in templates)
-    - screen_stocks, browser_navigate, browser_* etc.
-    """
-    # Match tool-like identifiers: get_*, screen_*, browser_*
-    tool_pattern = r"\b(get_\w+|screen_stocks|browser_\w+|get_screening_strategies|get_buy_sell_levels)\b"
-    raw_names = set(re.findall(tool_pattern, delegation_section))
-
-    # Filter out things that are clearly not tool names
-    # (e.g., get_quote is an internal yfinance method, not a tool)
-    non_tool_patterns = {
-        "get_history",
-        "get_quote",
-    }
-    return raw_names - non_tool_patterns
+def _read_agent_file(stem: str) -> str:
+    """Read an agent .md file and return its body (after YAML frontmatter)."""
+    agent_path = AGENTS_DIR / f"{stem}.md"
+    if not agent_path.exists():
+        return ""
+    content = agent_path.read_text(encoding="utf-8")
+    # Strip YAML frontmatter (between --- markers)
+    match = re.match(r"^---\s*\n.*?\n---\s*\n(.*)", content, re.DOTALL)
+    if match:
+        return match.group(1)
+    return content
 
 
-def _extract_subagent_templates(delegation_section: str) -> dict[str, str]:
-    """Extract individual sub-agent template blocks.
-
-    Returns a dict mapping sub-agent name to its full <subagent> block.
-    """
+def _extract_subagent_templates() -> dict[str, str]:
+    """Read all 10 agent .md files and return a dict mapping display name to body text."""
     templates: dict[str, str] = {}
-    pattern = r'<subagent\s+name="(\w+)"[^>]*>(.*?)</subagent>'
-    for match in re.finditer(pattern, delegation_section, re.DOTALL):
-        name = match.group(1)
-        body = match.group(2)
-        templates[name] = body
+    for display_name, file_stem in SUBAGENT_FILE_MAP.items():
+        body = _read_agent_file(file_stem)
+        if body:
+            templates[display_name] = body
     return templates
 
 
@@ -119,6 +116,16 @@ def _extract_tool_names_from_template(template: str) -> set[str]:
     raw_names = set(re.findall(tool_pattern, template))
     non_tool_patterns = {"get_history", "get_quote"}
     return raw_names - non_tool_patterns
+
+
+def _extract_all_agent_tool_names() -> set[str]:
+    """Extract all tool names referenced across all agent files."""
+    all_tools: set[str] = set()
+    for display_name, file_stem in SUBAGENT_FILE_MAP.items():
+        body = _read_agent_file(file_stem)
+        if body:
+            all_tools |= _extract_tool_names_from_template(body)
+    return all_tools
 
 
 def _extract_registered_tool_names_from_source() -> set[str]:
@@ -155,27 +162,21 @@ def tools_section(claude_md_content: str) -> str:
 
 
 @pytest.fixture(scope="module")
-def delegation_section(claude_md_content: str) -> str:
-    """Extract <delegation> section."""
-    return _extract_delegation_section(claude_md_content)
-
-
-@pytest.fixture(scope="module")
 def claude_md_tool_names(tools_section: str) -> set[str]:
     """All tool names declared in <tools> section."""
     return _extract_tool_names_from_tools_section(tools_section)
 
 
 @pytest.fixture(scope="module")
-def delegation_tool_names(delegation_section: str) -> set[str]:
-    """All tool names referenced in <delegation> section."""
-    return _extract_tool_names_from_delegation(delegation_section)
+def subagent_templates() -> dict[str, str]:
+    """Map of sub-agent display name to template body text from .claude/agents/*.md."""
+    return _extract_subagent_templates()
 
 
 @pytest.fixture(scope="module")
-def subagent_templates(delegation_section: str) -> dict[str, str]:
-    """Map of sub-agent name to template body."""
-    return _extract_subagent_templates(delegation_section)
+def agent_tool_names() -> set[str]:
+    """All tool names referenced across all agent files."""
+    return _extract_all_agent_tool_names()
 
 
 @pytest.fixture(scope="module")
@@ -216,33 +217,33 @@ class TestToolNameConsistency:
             f"{sorted(undocumented)}"
         )
 
-    def test_delegation_tool_names_are_registered(
+    def test_agent_tool_names_are_registered(
         self,
-        delegation_tool_names: set[str],
+        agent_tool_names: set[str],
         registered_tool_names: set[str],
     ) -> None:
-        """Every tool referenced in delegation templates exists in source code."""
-        missing = delegation_tool_names - registered_tool_names
+        """Every tool referenced in agent files exists in source code."""
+        missing = agent_tool_names - registered_tool_names
         assert not missing, (
-            f"Tools referenced in CLAUDE.md <delegation> but NOT registered in source: "
+            f"Tools referenced in agent files but NOT registered in source: "
             f"{sorted(missing)}"
         )
 
-    def test_delegation_tool_names_in_tools_section(
+    def test_agent_tool_names_in_tools_section(
         self,
-        delegation_tool_names: set[str],
+        agent_tool_names: set[str],
         claude_md_tool_names: set[str],
     ) -> None:
-        """Every tool referenced in delegation also appears in <tools> section."""
-        missing = delegation_tool_names - claude_md_tool_names
+        """Every tool referenced in agent files also appears in <tools> section."""
+        missing = agent_tool_names - claude_md_tool_names
         assert not missing, (
-            f"Tools referenced in <delegation> but NOT in <tools> section: "
+            f"Tools referenced in agent files but NOT in <tools> section: "
             f"{sorted(missing)}"
         )
 
 
 # ---------------------------------------------------------------------------
-# Tests: All 10 sub-agent templates reference valid tools
+# Tests: All 10 sub-agent files reference valid tools
 # ---------------------------------------------------------------------------
 
 
@@ -253,10 +254,11 @@ class TestSubagentTemplateToolNames:
         self,
         subagent_templates: dict[str, str],
     ) -> None:
-        """All 10 expected sub-agents are defined in CLAUDE.md."""
+        """All 10 expected sub-agents have agent files in .claude/agents/."""
         for name in EXPECTED_SUBAGENTS:
             assert name in subagent_templates, (
-                f"Sub-agent '{name}' not found in CLAUDE.md delegation section"
+                f"Sub-agent '{name}' not found in .claude/agents/ "
+                f"(expected file: {SUBAGENT_FILE_MAP[name]}.md)"
             )
 
     def test_subagent_count(
