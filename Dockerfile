@@ -6,6 +6,9 @@
 #   2. playwright — Install Chromium browser for browser tools
 #   3. runtime   — Final production image
 #   4. dev       — Development image with test dependencies
+#
+# Pattern follows official Astral uv Docker guide:
+# https://docs.astral.sh/uv/guides/integration/docker/
 # ============================================================
 
 # ----------------------------------------------------------
@@ -17,16 +20,31 @@ COPY --from=ghcr.io/astral-sh/uv:latest /uv /usr/local/bin/uv
 
 WORKDIR /app
 
-# Copy dependency manifests first for layer caching —
-# expensive dep install is cached when only src/ changes
-COPY pyproject.toml uv.lock ./
+# uv build settings
+ENV UV_COMPILE_BYTECODE=1
+ENV UV_LINK_MODE=copy
 
 # Optional: set BUILD_PROPHET=1 to include Prophet forecasting
 ARG BUILD_PROPHET=0
-RUN if [ "$BUILD_PROPHET" = "1" ]; then \
-      uv sync --frozen --no-dev --extra forecast; \
+
+# Install dependencies only (cached — rebuilds only when pyproject.toml/uv.lock change)
+RUN --mount=type=cache,target=/root/.cache/uv \
+    --mount=type=bind,source=uv.lock,target=uv.lock \
+    --mount=type=bind,source=pyproject.toml,target=pyproject.toml \
+    if [ "$BUILD_PROPHET" = "1" ]; then \
+      uv sync --locked --no-dev --no-install-project --extra forecast; \
     else \
-      uv sync --frozen --no-dev; \
+      uv sync --locked --no-dev --no-install-project; \
+    fi
+
+# Copy source and install project (rebuilds when src/ changes)
+COPY pyproject.toml uv.lock ./
+COPY src/ src/
+RUN --mount=type=cache,target=/root/.cache/uv \
+    if [ "$BUILD_PROPHET" = "1" ]; then \
+      uv sync --locked --no-dev --extra forecast; \
+    else \
+      uv sync --locked --no-dev; \
     fi
 
 # ----------------------------------------------------------
@@ -53,12 +71,12 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
 
 WORKDIR /app
 
-# Copy Python venv from deps stage
+# Copy Python venv from deps stage (includes project + all dependencies)
 COPY --from=deps /app/.venv /app/.venv
 # Copy Playwright browsers from playwright stage
 COPY --from=playwright /root/.cache/ms-playwright /root/.cache/ms-playwright
 
-# Copy application code
+# Copy application source (needed for editable install references)
 COPY src/ src/
 
 # Activate venv via PATH
@@ -81,7 +99,8 @@ FROM runtime AS dev
 
 COPY --from=ghcr.io/astral-sh/uv:latest /uv /usr/local/bin/uv
 COPY pyproject.toml uv.lock ./
-RUN uv sync --frozen
+RUN --mount=type=cache,target=/root/.cache/uv \
+    uv sync --locked --extra dev
 
 COPY tests/ tests/
 CMD ["python", "-m", "pytest", "tests/"]

@@ -26,9 +26,11 @@ services:
   pkscreener:
     image: pkjmesra/pkscreener:latest
     container_name: pkscreener
+    entrypoint: ["sleep", "infinity"]
+    environment:
+      - PKSCREENER_DOCKER=1
     volumes:
       - pkscreener-data:/PKScreener-main/actions_data
-    command: sleep infinity
     restart: unless-stopped
 
 volumes:
