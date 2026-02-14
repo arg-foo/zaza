@@ -4,7 +4,7 @@
 TASK-004
 
 ## Status
-PENDING
+COMPLETED
 
 ## Title
 Implement yfinance API Client

@@ -4,7 +4,7 @@
 TASK-017
 
 ## Status
-PENDING
+COMPLETED
 
 ## Title
 Implement Sentiment Analysis Tools (4 Tools)

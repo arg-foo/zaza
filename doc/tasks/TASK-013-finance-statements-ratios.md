@@ -4,7 +4,7 @@
 TASK-013
 
 ## Status
-PENDING
+COMPLETED
 
 ## Title
 Implement Financial Data Tools — Statements & Ratios

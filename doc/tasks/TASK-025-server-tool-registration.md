@@ -4,7 +4,7 @@
 TASK-025
 
 ## Status
-PENDING
+COMPLETED
 
 ## Title
 Wire All Tool Registrations into MCP Server

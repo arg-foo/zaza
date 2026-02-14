@@ -4,7 +4,7 @@
 TASK-018
 
 ## Status
-PENDING
+COMPLETED
 
 ## Title
 Implement Macro & Cross-Asset Tools (5 Tools)

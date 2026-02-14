@@ -4,7 +4,7 @@
 TASK-020
 
 ## Status
-PENDING
+COMPLETED
 
 ## Title
 Implement Institutional Flow Tools (4 Tools)

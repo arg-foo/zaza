@@ -4,7 +4,7 @@
 TASK-012
 
 ## Status
-PENDING
+COMPLETED
 
 ## Title
 Implement Financial Data Tools — Prices & Company Info
