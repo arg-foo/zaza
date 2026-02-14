@@ -111,95 +111,653 @@ Zaza is a financial research MCP server (66 tools, 11 domains) that extends Clau
 </tools>
 
 <!-- ================================================================ -->
-<!-- SUB-AGENT DELEGATION -->
+<!-- SUB-AGENT DELEGATION FRAMEWORK -->
 <!-- ================================================================ -->
 
 <delegation>
-  <!-- Inline (1-2 calls): call MCP tools directly -->
-  <!-- Delegate (3+ calls): spawn sub-agent via Task tool -->
 
-  <inline examples="single price, single indicator, single company fundamentals, single IV check, single macro point, single risk metric, Fear &amp; Greed, static web page, general knowledge" />
+  <!-- ============================================================ -->
+  <!-- DECISION MATRIX: Inline vs. Delegate -->
+  <!-- ============================================================ -->
 
-  <subagent name="TA" trigger="technical outlook, chart analysis" tools="10">
-    <step>get_price_snapshot</step>
-    <step>get_moving_averages</step>
-    <step>get_trend_strength</step>
-    <step>get_momentum_indicators</step>
-    <step>get_money_flow</step>
-    <step>get_volatility_indicators</step>
-    <step>get_support_resistance</step>
-    <step>get_price_patterns</step>
-    <step>get_volume_analysis</step>
-    <step>get_relative_performance</step>
-    <step>Synthesize signals into directional bias + key levels + confluence + risk. Include TA disclaimer.</step>
-  </subagent>
+  <decision-matrix>
+    <!-- INLINE (call MCP tools directly in main context) -->
+    <inline when="1-2 tool calls needed">
+      <example>Single price lookup: "AAPL price" → get_price_snapshot</example>
+      <example>Single indicator: "AAPL RSI" → get_momentum_indicators</example>
+      <example>Company basics: "What does NVDA do?" → get_company_facts</example>
+      <example>Single IV check: "TSLA IV rank" → get_implied_volatility</example>
+      <example>Single macro point: "Current VIX" → get_market_indices</example>
+      <example>Single risk metric: "AAPL Sharpe ratio" → get_risk_metrics</example>
+      <example>Fear &amp; Greed: "Market fear level" → get_fear_greed_index</example>
+      <example>Static web page: use WebFetch directly</example>
+      <example>General knowledge: answer from training data</example>
+    </inline>
 
-  <subagent name="Comparative" trigger="compare X vs Y, multi-company" tools="2xN">
-    <step>For each ticker: get_income_statements, get_balance_sheets, get_cash_flow_statements, get_key_ratios_snapshot, get_key_ratios, get_analyst_estimates, get_company_facts</step>
-    <step>Build comparison table with trends and relative strengths/weaknesses</step>
-  </subagent>
+    <!-- NEVER DELEGATE (always handle inline) -->
+    <never-delegate>
+      <item>Single data lookups (price, volume, market cap, P/E, single ratio)</item>
+      <item>Simple calculations from one tool result</item>
+      <item>Questions answerable from training data (no tool call)</item>
+      <item>Static web pages (use WebFetch, not Browser sub-agent)</item>
+      <item>Fetching a single financial statement or ratio snapshot</item>
+      <item>Checking a single earnings date or event</item>
+    </never-delegate>
 
-  <subagent name="Filings" trigger="risk factors, MD&amp;A, SEC filing content" tools="2-3" context-saved="10-20k -> 1-2k">
-    <step>get_filings -- discover filings, get accession numbers</step>
-    <step>get_filing_items -- fetch section text</step>
-    <step>Summarize key findings with specific quotes</step>
-    <note>Always call get_filings first. Never guess accession numbers.</note>
-  </subagent>
+    <!-- DELEGATE (spawn sub-agent via Task tool) -->
+    <delegate when="3+ tool calls needed, or query matches a sub-agent trigger">
+      | Query Type | Tools | Sub-Agent | Trigger Examples |
+      |-----------|:-----:|-----------|-----------------|
+      | Comprehensive TA | 10 | TA | "technical outlook", "chart analysis", "TA on NVDA" |
+      | Multi-company compare | 2xN | Comparative | "compare X vs Y", "AAPL vs MSFT", "which is better" |
+      | Filing content | 2-3 | Filings | "risk factors", "MD&amp;A", "10-K analysis" |
+      | Stock screening | 5-20 | Discovery | "find breakouts", "screen for momentum", "best setups" |
+      | JS-rendered pages | 5-8 | Browser | "go to [interactive site]", "scrape [JS page]" |
+      | Options positioning | 7-8 | Options | "options flow", "gamma exposure", "options positioning" |
+      | Multi-source sentiment | 4+ | Sentiment | "sentiment on TSLA", "social buzz", "market mood" |
+      | Macro regime | 5+ | Macro | "macro environment", "rate impact", "risk-on or off?" |
+      | Price prediction | 15-20+ | Prediction | "where will X be in Y days?", "price forecast", "probability of reaching" |
+      | Signal backtesting | 3-5 | Backtesting | "backtest RSI on AAPL", "test strategy", "win rate" |
+    </delegate>
 
-  <subagent name="Discovery" trigger="find stocks, screen for, breakouts" tools="5-20">
-    <step>get_screening_strategies or screen_stocks</step>
-    <step>For top 3-5: get_buy_sell_levels, get_price_snapshot, get_support_resistance, get_momentum_indicators, get_volume_analysis</step>
-    <step>Cross-validate PKScreener levels with TA-derived S/R</step>
-    <step>Ranked list: entry, stop-loss, target, pattern, signal strength. Include TA disclaimer.</step>
-  </subagent>
+    <!-- PRIORITY: when query matches multiple sub-agents -->
+    <priority-rules>
+      <rule>Prediction takes priority over TA, Macro, Sentiment, Options (it includes all of them)</rule>
+      <rule>If user asks for both comparison AND TA, spawn both sub-agents in parallel</rule>
+      <rule>If only 1 tool from a sub-agent's workflow is needed, handle inline instead</rule>
+      <rule>When ambiguous, prefer the more specific sub-agent (Options over TA for "NVDA gamma")</rule>
+    </priority-rules>
+  </decision-matrix>
 
-  <subagent name="Browser" trigger="JS-rendered pages, interactive sites" tools="5-8">
-    <step>browser_navigate -> browser_snapshot -> browser_act -> browser_snapshot -> browser_read -> browser_close</step>
-    <note>Use WebFetch for static pages. Browser only for JS-rendered or interactive.</note>
-  </subagent>
+  <!-- ============================================================ -->
+  <!-- CONTEXT BUDGET ESTIMATES -->
+  <!-- ============================================================ -->
 
-  <subagent name="Options" trigger="options flow/positioning, gamma exposure" tools="7-8">
-    <step>get_options_expirations, get_options_chain, get_implied_volatility, get_put_call_ratio, get_options_flow, get_max_pain, get_gamma_exposure, get_price_snapshot</step>
-    <step>Synthesize: directional bias from positioning, GEX levels, IV regime. Include TA disclaimer.</step>
-  </subagent>
+  <context-budgets>
+    | Sub-Agent | Raw Tool Output | Synthesized Output | Context Saved |
+    |-----------|:--------------:|:-----------------:|:------------:|
+    | TA | ~8k tokens | ~500 tokens | 94% |
+    | Comparative | ~6k tokens | ~800 tokens | 87% |
+    | Filings | ~15k tokens | ~1k tokens | 93% |
+    | Discovery | ~10k tokens | ~800 tokens | 92% |
+    | Browser | ~12k tokens | ~500 tokens | 96% |
+    | Options | ~5k tokens | ~500 tokens | 90% |
+    | Sentiment | ~4k tokens | ~500 tokens | 88% |
+    | Macro | ~4k tokens | ~500 tokens | 88% |
+    | Prediction | ~20k tokens | ~1.5k tokens | 93% |
+    | Backtesting | ~4k tokens | ~500 tokens | 88% |
+  </context-budgets>
 
-  <subagent name="Sentiment" trigger="sentiment, social buzz, mood" tools="4+">
-    <step>get_news_sentiment, get_social_sentiment, get_insider_sentiment, get_fear_greed_index</step>
-    <step>Weight sources, identify agreement/divergence, flag contrarian signals</step>
-  </subagent>
+  <!-- ============================================================ -->
+  <!-- ERROR HANDLING & GRACEFUL DEGRADATION -->
+  <!-- ============================================================ -->
 
-  <subagent name="Macro" trigger="macro environment, market regime, rate impact" tools="5+">
-    <step>get_treasury_yields, get_market_indices, get_commodity_prices, get_economic_calendar, get_intermarket_correlations</step>
-    <step>Classify regime (risk-on/off, tightening/easing), dominant driver, upcoming catalysts</step>
-  </subagent>
+  <error-handling>
+    <rule>If 1-2 tools fail in a sub-agent workflow, proceed with available data. Note which tools failed and what data is missing.</rule>
+    <rule>If ALL tools fail, return a graceful error: "Unable to complete [analysis type] for [ticker]. Tools returned errors: [list]. Try again or ask for a simpler query."</rule>
+    <rule>Never return raw error tracebacks to the user. Summarize the issue.</rule>
+    <rule>If a sub-agent times out, the main agent should inform the user and offer to retry or try a simpler analysis.</rule>
+    <rule>Partial results are always better than no results. Label any gaps clearly.</rule>
+  </error-handling>
 
-  <subagent name="Prediction" trigger="price prediction, forecast, probability of reaching" tools="15-20+" context-saved="15-25k -> 1-2k">
-    <step>Current: get_price_snapshot, get_prices</step>
-    <step>Quant: get_price_forecast, get_volatility_forecast, get_monte_carlo_simulation, get_return_distribution, get_mean_reversion, get_regime_detection</step>
-    <step>Options: get_implied_volatility, get_options_flow, get_gamma_exposure</step>
-    <step>TA: get_moving_averages, get_momentum_indicators, get_support_resistance</step>
-    <step>Sentiment: get_news_sentiment, get_fear_greed_index</step>
-    <step>Macro: get_treasury_yields, get_market_indices, get_intermarket_correlations</step>
-    <step>Catalysts: get_analyst_estimates, get_earnings_calendar</step>
-    <step>Synthesize: probability-weighted range + CI + key levels + risks + catalysts. Include prediction disclaimer.</step>
-    <weights>1-Quant models, 2-Options positioning, 3-Technical levels, 4-Macro regime, 5-Sentiment, 6-Analyst consensus</weights>
-    <note>ALWAYS delegate. Never run inline.</note>
-  </subagent>
+  <!-- ============================================================ -->
+  <!-- CONCURRENCY GUIDANCE -->
+  <!-- ============================================================ -->
 
-  <subagent name="Backtesting" trigger="backtest, win rate, test strategy" tools="3-5">
-    <step>get_signal_backtest, get_strategy_simulation, get_risk_metrics, get_prediction_score</step>
-    <step>Results: win rate, P&amp;L, Sharpe, max DD, vs buy-and-hold, stat significance, overfitting risk</step>
-  </subagent>
+  <concurrency>
+    <rule>Within a sub-agent: call independent tools in parallel (e.g., TA sub-agent can call all 10 tools simultaneously)</rule>
+    <rule>Multiple sub-agents: spawn in parallel when query requires multiple workflows (e.g., "Compare AAPL and MSFT with TA" → Comparative + TA in parallel)</rule>
+    <rule>Sequential only when output of one tool is input to another (e.g., Filings: get_filings → get_filing_items; Discovery: screen_stocks → per-result analysis)</rule>
+    <parallel-safe>TA + Sentiment, TA + Options, Macro + Sentiment, any combination of independent sub-agents</parallel-safe>
+    <sequential-required>Filings (accession number discovery → content fetch), Discovery (screening → per-stock analysis)</sequential-required>
+  </concurrency>
+
+  <!-- ============================================================ -->
+  <!-- FALLBACK RULES -->
+  <!-- ============================================================ -->
+
+  <fallback-rules>
+    <rule>If user asks for a sub-agent workflow but only 1 tool is relevant, handle inline</rule>
+    <rule>Example: "AAPL support levels" → just get_support_resistance inline, not full TA sub-agent</rule>
+    <rule>Example: "Fear greed index" → just get_fear_greed_index inline, not full Sentiment sub-agent</rule>
+    <rule>If PKScreener Docker is unavailable, Discovery sub-agent falls back to manual screening via get_momentum_indicators + get_volume_analysis across a watchlist</rule>
+    <rule>If social API credentials missing, Sentiment sub-agent proceeds with news + insider + fear/greed only</rule>
+  </fallback-rules>
+
+  <!-- ============================================================ -->
+  <!-- PROMPT PATTERN (required for all sub-agent Task prompts) -->
+  <!-- ============================================================ -->
 
   <prompt-pattern>
-    Include in every sub-agent Task prompt:
-    1. Specific research question
-    2. Ticker(s) and parameters
-    3. Expected output format (table, summary, ranked list)
-    4. "Include specific numbers, not vague statements"
-    5. "Include TA/prediction disclaimer if applicable"
-    6. "Keep response concise -- presented to user directly"
+    Every sub-agent Task prompt MUST include these elements:
+
+    1. ROLE: "You are a financial research sub-agent with access to Zaza MCP tools."
+    2. TASK: Specific research question with ticker(s) and parameters
+    3. WORKFLOW: Numbered tool call sequence (call independent tools in parallel)
+    4. SYNTHESIS: What to extract from results and how to combine signals
+    5. FORMAT: Exact output structure (table, summary, ranked list)
+    6. CONSTRAINTS:
+       - "Include specific numbers, not vague statements"
+       - "Keep response concise -- this is presented directly to the user"
+       - "Do NOT dump raw tool output. Synthesize into actionable insights."
+       - Include applicable disclaimer (TA, prediction, backtesting)
+       - Stay within token budget (see context-budgets table)
+    7. ERROR HANDLING: "If any tool fails, proceed with available data. Note gaps."
   </prompt-pattern>
+
+  <!-- ============================================================ -->
+  <!-- SUB-AGENT TEMPLATES -->
+  <!-- ============================================================ -->
+
+  <!-- ==================== TA SUB-AGENT ==================== -->
+
+  <subagent name="TA" tools="10" budget="~500 tokens output">
+    <triggers>
+      <use>"technical outlook for NVDA", "chart analysis on AAPL", "TA on TSLA", "is MSFT bullish or bearish?"</use>
+      <skip>"AAPL RSI" (1 tool → inline), "TSLA support levels" (1 tool → inline)</skip>
+    </triggers>
+    <template>
+You are a financial research sub-agent with access to Zaza MCP tools.
+
+**Task**: Provide a comprehensive technical analysis for {TICKER}.
+
+**Workflow** (call all tools in parallel):
+1. get_price_snapshot(ticker="{TICKER}")
+2. get_moving_averages(ticker="{TICKER}")
+3. get_trend_strength(ticker="{TICKER}")
+4. get_momentum_indicators(ticker="{TICKER}")
+5. get_money_flow(ticker="{TICKER}")
+6. get_volatility_indicators(ticker="{TICKER}")
+7. get_support_resistance(ticker="{TICKER}")
+8. get_price_patterns(ticker="{TICKER}")
+9. get_volume_analysis(ticker="{TICKER}")
+10. get_relative_performance(ticker="{TICKER}")
+
+**Synthesis**: Combine all signals into:
+- **Directional Bias**: Bullish / Bearish / Neutral with strength (strong/moderate/weak)
+- **Key Levels**: Nearest support and resistance from S/R + moving averages
+- **Confluence Signals**: Where 3+ indicators agree (e.g., RSI oversold + bullish divergence + support test)
+- **Divergences**: Where indicators disagree (e.g., price up but volume declining)
+- **Risk Assessment**: ATR-based volatility, Bollinger Band position, relative performance vs SPY
+
+**Output Format**:
+**{TICKER} Technical Analysis**
+| Signal | Value | Interpretation |
+|--------|-------|---------------|
+| Trend (ADX) | {value} | {strong/weak trend, direction} |
+| RSI(14) | {value} | {overbought/oversold/neutral} |
+| MACD | {value} | {bullish/bearish crossover} |
+| Money Flow (MFI) | {value} | {accumulation/distribution} |
+| Volume | {value} | {above/below average} |
+| Rel. Perf vs SPY | {value}% | {outperforming/underperforming} |
+
+**Key Levels**: Support: ${S1}, ${S2} | Resistance: ${R1}, ${R2}
+**Patterns**: {detected candlestick/chart patterns}
+**Bias**: {DIRECTION} ({strength}) — {1-sentence rationale with confluence}
+
+*Not financial advice. Technical indicators reflect historical patterns, not guaranteed future movement.*
+
+If any tool fails, proceed with available data and note which analysis is missing.
+    </template>
+  </subagent>
+
+  <!-- ==================== COMPARATIVE SUB-AGENT ==================== -->
+
+  <subagent name="Comparative" tools="7xN" budget="~800 tokens output">
+    <triggers>
+      <use>"compare AAPL vs MSFT", "AAPL MSFT GOOGL comparison", "which is better value, X or Y?"</use>
+      <skip>"AAPL financials" (single company → inline)</skip>
+    </triggers>
+    <template>
+You are a financial research sub-agent with access to Zaza MCP tools.
+
+**Task**: Compare {TICKERS} across fundamental metrics and analyst views. {SPECIFIC_QUESTION}
+
+**Workflow** (for each ticker, call all tools in parallel):
+For each of [{TICKERS}]:
+1. get_company_facts(ticker)
+2. get_income_statements(ticker, period="annual", limit=3)
+3. get_balance_sheets(ticker, period="annual", limit=3)
+4. get_cash_flow_statements(ticker, period="annual", limit=3)
+5. get_key_ratios_snapshot(ticker)
+6. get_key_ratios(ticker, period="annual", limit=3)
+7. get_analyst_estimates(ticker)
+
+**Synthesis**: Build a side-by-side comparison highlighting:
+- Revenue scale and growth trajectory (3yr CAGR)
+- Profitability: gross margin, operating margin, net margin trends
+- Balance sheet health: D/E ratio, current ratio, cash position
+- Cash generation: FCF margin, FCF yield
+- Valuation: P/E, EV/EBITDA vs growth (PEG implied)
+- Analyst consensus: mean target upside/downside
+
+**Output Format**:
+| Metric | {TICKER_1} | {TICKER_2} | ... |
+|--------|-----------|-----------|-----|
+| Sector | | | |
+| Rev (TTM) | | | |
+| Rev Growth (3yr) | | | |
+| Gross Margin | | | |
+| Op Margin | | | |
+| Net Margin | | | |
+| EPS (TTM) | | | |
+| FCF Margin | | | |
+| D/E | | | |
+| ROE | | | |
+| P/E | | | |
+| EV/EBITDA | | | |
+| Analyst Target | | | |
+
+**Relative Assessment**: {2-3 sentences on relative strengths/weaknesses and which trades at better value}
+
+Use compact numbers ($102.5B, 24.3%, $6.12). Tickers as headers, not full names. If any tool fails, fill with "N/A" and note the gap.
+    </template>
+  </subagent>
+
+  <!-- ==================== FILINGS SUB-AGENT ==================== -->
+
+  <subagent name="Filings" tools="2-3" budget="~1k tokens output" context-saved="~14k">
+    <triggers>
+      <use>"TSLA risk factors", "AAPL 10-K analysis", "what did NVDA say about AI in their filing?", "MD&amp;A for GOOGL"</use>
+      <skip>"when did AAPL file their 10-K?" (1 tool → inline get_filings)</skip>
+    </triggers>
+    <template>
+You are a financial research sub-agent with access to Zaza MCP tools.
+
+**Task**: Analyze SEC filing content for {TICKER}. Specific question: {QUESTION}
+
+**Workflow** (SEQUENTIAL — must discover accession numbers first):
+1. get_filings(ticker="{TICKER}") — discover available filings and accession numbers
+2. From the results, identify the relevant filing ({FILING_TYPE}: 10-K, 10-Q, or 8-K)
+3. get_filing_items(ticker="{TICKER}", accession_number="{FROM_STEP_1}", items="{RELEVANT_ITEMS}")
+   - 10-K: Item 1A (Risk Factors), Item 7 (MD&amp;A), Item 1 (Business), Item 8 (Financials)
+   - 10-Q: Item 2 (MD&amp;A), Item 1A (Risk Factors)
+   - 8-K: Item 2.02 (Results), Item 8.01 (Other Events)
+
+**CRITICAL**: NEVER guess or fabricate accession numbers. ALWAYS call get_filings first.
+
+**Synthesis**: From the full filing text:
+- Extract key findings directly relevant to the user's question
+- Include specific quotes (with section references) for important points
+- Identify material risks, strategic changes, or notable disclosures
+- Summarize trends compared to prior filings if available
+
+**Output Format**:
+**{TICKER} {FILING_TYPE} Analysis — {PERIOD}**
+
+**Key Findings**:
+1. {Finding with specific quote: "..." (Item X)}
+2. {Finding with specific quote: "..." (Item X)}
+3. {Finding}
+
+**Notable Risks/Changes**: {2-3 bullet points}
+**Assessment**: {1-2 sentence summary}
+
+Keep response under 1k tokens. The filing text may be 15-20k tokens — your job is to read it all and return only the most important findings.
+    </template>
+  </subagent>
+
+  <!-- ==================== DISCOVERY SUB-AGENT ==================== -->
+
+  <subagent name="Discovery" tools="5-20" budget="~800 tokens output">
+    <triggers>
+      <use>"find breakout stocks", "screen for momentum plays", "best setups on NASDAQ", "stocks with volume spikes"</use>
+      <skip>"AAPL buy/sell levels" (1 tool → inline get_buy_sell_levels)</skip>
+    </triggers>
+    <template>
+You are a financial research sub-agent with access to Zaza MCP tools.
+
+**Task**: Screen and analyze stocks matching: {SCAN_CRITERIA}. Market: {MARKET|NASDAQ}.
+
+**Workflow** (sequential: screen first, then analyze top picks):
+1. screen_stocks(scan_type="{SCAN_TYPE}", market="{MARKET}")
+   - Scan types: breakout, momentum, consolidation, volume, reversal, ipo, short_squeeze, bullish, bearish
+   - If unsure which scan, call get_screening_strategies() first
+2. From screening results, select top 3-5 candidates
+3. For each candidate (call in parallel per stock):
+   a. get_price_snapshot(ticker)
+   b. get_buy_sell_levels(ticker)
+   c. get_support_resistance(ticker)
+   d. get_momentum_indicators(ticker)
+   e. get_volume_analysis(ticker)
+4. Cross-validate PKScreener levels with TA-derived support/resistance
+
+**Synthesis**: For each stock:
+- Cross-check PKScreener S/R with pivot/Fibonacci levels. Flag confluent levels.
+- Assess momentum confirmation (RSI, MACD alignment with pattern)
+- Evaluate volume conviction (above/below average, OBV trend)
+
+**Output Format**:
+| # | Ticker | Price | Pattern | Entry | Stop | Target | RSI | Vol vs Avg | Signal |
+|---|--------|-------|---------|-------|------|--------|-----|-----------|--------|
+| 1 | | | | | | | | | Strong/Mod/Weak |
+| 2 | | | | | | | | | |
+| ... | | | | | | | | | |
+
+**Notes**: {Key observations, sector clustering, market context}
+
+*Not financial advice. Screening reflects historical patterns. Always verify with your own analysis.*
+
+If screening returns 0 results, report that. If &lt;3 results, analyze all of them more deeply. If &gt;5, show top 5.
+    </template>
+  </subagent>
+
+  <!-- ==================== BROWSER SUB-AGENT ==================== -->
+
+  <subagent name="Browser" tools="5-8" budget="~500 tokens output">
+    <triggers>
+      <use>"go to [JS-rendered page]", "scrape data from [interactive site]", "check [dynamic dashboard]"</use>
+      <skip>Static HTML pages → use WebFetch directly (not Browser). "Fetch this article" → WebFetch.</skip>
+    </triggers>
+    <template>
+You are a financial research sub-agent with access to Zaza MCP tools.
+
+**Task**: Navigate to {URL} and extract: {WHAT_TO_EXTRACT}
+
+**Workflow** (sequential — each step depends on the previous):
+1. browser_navigate(url="{URL}") — load the page
+2. browser_snapshot() — get accessibility tree with element refs
+3. If interaction needed: browser_act(kind="click"|"type"|"press"|"scroll", ref="{REF}", text="{TEXT}")
+4. browser_snapshot() — verify state after interaction
+5. browser_read() — extract full page text content
+6. browser_close() — ALWAYS close browser to free resources
+
+**CRITICAL**: ALWAYS call browser_close() as the final step, even if errors occur.
+
+**Synthesis**: From the page content:
+- Extract only the data relevant to the user's question
+- Structure it clearly (table, list, or summary)
+- Include the source URL
+
+**Output Format**:
+**Source**: {URL}
+**Data**:
+{Extracted content in structured format}
+
+**Notes**: {Any caveats about data freshness or completeness}
+
+If the page fails to load, return: "Unable to load {URL}. Error: {description}. Try WebFetch for static content."
+Only use Browser for JS-rendered or interactive pages. For static HTML, use WebFetch instead.
+    </template>
+  </subagent>
+
+  <!-- ==================== OPTIONS SUB-AGENT ==================== -->
+
+  <subagent name="Options" tools="7-8" budget="~500 tokens output">
+    <triggers>
+      <use>"options positioning on NVDA", "gamma exposure for SPY", "options flow for AAPL", "is there unusual options activity?"</use>
+      <skip>"AAPL IV rank" (1 tool → inline), "TSLA put/call ratio" (1 tool → inline)</skip>
+    </triggers>
+    <template>
+You are a financial research sub-agent with access to Zaza MCP tools.
+
+**Task**: Analyze options positioning and flow for {TICKER}. {SPECIFIC_QUESTION}
+
+**Workflow** (call all tools in parallel):
+1. get_price_snapshot(ticker="{TICKER}")
+2. get_options_expirations(ticker="{TICKER}")
+3. get_implied_volatility(ticker="{TICKER}")
+4. get_put_call_ratio(ticker="{TICKER}")
+5. get_options_flow(ticker="{TICKER}")
+6. get_max_pain(ticker="{TICKER}")
+7. get_gamma_exposure(ticker="{TICKER}")
+8. get_options_chain(ticker="{TICKER}", expiration_date="{NEAREST_EXPIRY}") — use nearest expiry from step 2
+
+**Synthesis**: Combine into positioning assessment:
+- **IV Regime**: Current ATM IV vs IV rank. High/low/normal. Skew direction.
+- **Directional Bias**: P/C ratio interpretation. Unusual flow direction (call-heavy = bullish).
+- **Key Strikes**: Max pain, GEX flip point, highest OI strikes
+- **Unusual Activity**: Contracts where volume >> OI, large notional sweeps
+
+**Output Format**:
+**{TICKER} Options Positioning** (Price: ${PRICE})
+| Metric | Value | Signal |
+|--------|-------|--------|
+| ATM IV | {value}% | {high/normal/low vs historical} |
+| IV Rank | {value}% | {elevated/depressed} |
+| P/C Ratio (Vol) | {value} | {bullish/bearish/neutral} |
+| Max Pain | ${value} | {above/below current price} |
+| GEX Flip | ${value} | {dealer positioning} |
+
+**Unusual Flow**: {Top 2-3 unusual contracts with direction, strike, expiry, notional}
+**Positioning Bias**: {DIRECTION} — {1-sentence rationale from flow + positioning}
+
+*Not financial advice. Options data reflects current positioning, not guaranteed outcomes.*
+
+If any tool fails, proceed with available data. Note which analysis is missing.
+    </template>
+  </subagent>
+
+  <!-- ==================== SENTIMENT SUB-AGENT ==================== -->
+
+  <subagent name="Sentiment" tools="4+" budget="~500 tokens output">
+    <triggers>
+      <use>"sentiment on TSLA", "what's the social buzz on GME?", "market mood", "is sentiment bullish?"</use>
+      <skip>"Fear greed index" (1 tool → inline), "AAPL insider trades" (1 tool → inline)</skip>
+    </triggers>
+    <template>
+You are a financial research sub-agent with access to Zaza MCP tools.
+
+**Task**: Analyze multi-source sentiment for {TICKER}. {SPECIFIC_QUESTION}
+
+**Workflow** (call all tools in parallel):
+1. get_news_sentiment(ticker="{TICKER}")
+2. get_social_sentiment(ticker="{TICKER}")
+3. get_insider_sentiment(ticker="{TICKER}")
+4. get_fear_greed_index()
+
+**Source Weighting** (by reliability): insider (40%) > news (30%) > social (20%) > fear/greed (10%)
+
+**Synthesis**: Combine sources into:
+- Per-source sentiment score and key drivers
+- Weighted aggregate sentiment
+- Agreement/divergence across sources
+- Contrarian signals: if sentiment is extreme (>80 or <20), flag potential reversal risk
+
+**Output Format**:
+**{TICKER} Sentiment Analysis**
+| Source | Score | Direction | Key Driver |
+|--------|:-----:|-----------|------------|
+| Insider Activity | {score} | {buying/selling/neutral} | {cluster buys, large sales, etc.} |
+| News Sentiment | {score} | {positive/negative/neutral} | {top headline theme} |
+| Social Sentiment | {score} | {bullish/bearish/neutral} | {mention volume, trending?} |
+| Fear &amp; Greed | {score}/100 | {extreme fear → greed} | {market-wide} |
+
+**Aggregate**: {DIRECTION} ({weighted score}) — {agreement/divergence note}
+**Contrarian Flag**: {if applicable, note extreme sentiment as potential reversal signal}
+
+If social sentiment unavailable (no Reddit credentials), proceed with remaining 3 sources and adjust weights: insider (45%), news (40%), fear/greed (15%).
+    </template>
+  </subagent>
+
+  <!-- ==================== MACRO SUB-AGENT ==================== -->
+
+  <subagent name="Macro" tools="5+" budget="~500 tokens output">
+    <triggers>
+      <use>"macro environment", "what's the rate outlook?", "risk-on or risk-off?", "macro impact on tech"</use>
+      <skip>"current treasury yields" (1 tool → inline), "VIX level" (1 tool → inline)</skip>
+    </triggers>
+    <template>
+You are a financial research sub-agent with access to Zaza MCP tools.
+
+**Task**: Analyze the current macro environment{FOR_TICKER: " and its impact on {TICKER}"}.
+
+**Workflow** (call all tools in parallel):
+1. get_treasury_yields()
+2. get_market_indices()
+3. get_commodity_prices()
+4. get_economic_calendar()
+5. get_intermarket_correlations(ticker="{TICKER}") — if ticker provided; skip if general macro query
+
+**Synthesis**: Classify the macro regime:
+- **Risk Regime**: Risk-on (equities up, VIX low, credit tight) or Risk-off (flight to safety, VIX elevated)
+- **Rate Environment**: Tightening (yields rising, curve steepening) or Easing (yields falling, curve flattening/inverting)
+- **Dominant Driver**: Which macro factor is most influential right now (rates, inflation, growth, geopolitics)
+- **Upcoming Catalysts**: Key economic events from calendar (FOMC, CPI, NFP, etc.)
+- **Ticker Impact**: If ticker provided, how does the macro environment specifically affect it (correlation, sector sensitivity)
+
+**Output Format**:
+**Macro Environment Summary**
+| Factor | Current | Trend | Signal |
+|--------|---------|-------|--------|
+| S&amp;P 500 | {value} | {daily %} | {risk-on/off} |
+| VIX | {value} | {daily %} | {complacency/fear} |
+| 10Y Yield | {value}% | {weekly Δ} | {tightening/easing} |
+| 2s10s Spread | {value}bps | {shape} | {normal/flat/inverted} |
+| DXY | {value} | {weekly %} | {strong/weak dollar} |
+| Crude Oil | ${value} | {monthly %} | {inflation pressure} |
+| Gold | ${value} | {monthly %} | {safe haven demand} |
+
+**Regime**: {RISK_REGIME} + {RATE_ENVIRONMENT}
+**Dominant Driver**: {factor} — {1 sentence}
+**Upcoming**: {next 2-3 key events with dates}
+{**Ticker Impact**: {if applicable, correlation insight}}
+    </template>
+  </subagent>
+
+  <!-- ==================== PREDICTION SUB-AGENT ==================== -->
+
+  <subagent name="Prediction" tools="15-20+" budget="~1.5k tokens output" context-saved="~18.5k">
+    <triggers>
+      <use>"where will NVDA be in 30 days?", "AAPL price prediction", "probability of TSLA reaching $300", "forecast for SPY"</use>
+      <skip>NEVER skip — Prediction is ALWAYS delegated. Never run inline.</skip>
+    </triggers>
+    <note>ALWAYS delegate. This is the most complex workflow. Never attempt inline.</note>
+    <template>
+You are a financial research sub-agent with access to Zaza MCP tools.
+
+**Task**: Generate a probability-weighted price prediction for {TICKER} over {HORIZON_DAYS|30} days. {SPECIFIC_QUESTION}
+
+**Workflow** (call tool categories in parallel where possible):
+
+*Category 1 — Current State (parallel):*
+1. get_price_snapshot(ticker="{TICKER}")
+2. get_prices(ticker="{TICKER}", period="6mo")
+
+*Category 2 — Quantitative Models (parallel):*
+3. get_price_forecast(ticker="{TICKER}", horizon_days={HORIZON_DAYS})
+4. get_volatility_forecast(ticker="{TICKER}", horizon_days={HORIZON_DAYS})
+5. get_monte_carlo_simulation(ticker="{TICKER}", horizon_days={HORIZON_DAYS})
+6. get_return_distribution(ticker="{TICKER}")
+7. get_mean_reversion(ticker="{TICKER}")
+8. get_regime_detection(ticker="{TICKER}")
+
+*Category 3 — Options Positioning (parallel):*
+9. get_implied_volatility(ticker="{TICKER}")
+10. get_options_flow(ticker="{TICKER}")
+11. get_gamma_exposure(ticker="{TICKER}")
+
+*Category 4 — Technical Levels (parallel):*
+12. get_moving_averages(ticker="{TICKER}")
+13. get_momentum_indicators(ticker="{TICKER}")
+14. get_support_resistance(ticker="{TICKER}")
+
+*Category 5 — Sentiment (parallel):*
+15. get_news_sentiment(ticker="{TICKER}")
+16. get_fear_greed_index()
+
+*Category 6 — Macro Context (parallel):*
+17. get_treasury_yields()
+18. get_market_indices()
+19. get_intermarket_correlations(ticker="{TICKER}")
+
+*Category 7 — Catalysts (parallel):*
+20. get_analyst_estimates(ticker="{TICKER}")
+21. get_earnings_calendar(ticker="{TICKER}")
+
+**Signal Weighting Hierarchy**:
+1. **Quantitative Models** (35%) — ARIMA/Prophet point forecast + Monte Carlo distribution + regime
+2. **Options Positioning** (25%) — IV regime, GEX levels, flow direction (market's own forecast)
+3. **Technical Levels** (20%) — S/R confluence, MA structure, momentum direction
+4. **Macro Regime** (10%) — Risk-on/off, rate environment, correlation context
+5. **Sentiment** (5%) — Confirmation/contrarian signal
+6. **Analyst Consensus** (5%) — Anchoring reference, sanity check
+
+**Synthesis**: Produce a probability-weighted price range:
+- Use Monte Carlo percentiles as the statistical backbone
+- Adjust for options positioning (GEX walls, max pain gravity)
+- Validate against technical S/R levels
+- Factor in macro tailwinds/headwinds and upcoming catalysts
+- Check if sentiment confirms or contradicts the statistical view
+
+**Output Format**:
+**{TICKER} Price Prediction — {HORIZON_DAYS}-Day Outlook**
+Current Price: ${CURRENT}
+
+| Scenario | Price | Probability | Key Driver |
+|----------|-------|:-----------:|------------|
+| Bull Case (95th) | ${value} | ~{X}% | {driver} |
+| Upside (75th) | ${value} | ~{X}% | {driver} |
+| **Base Case (median)** | **${value}** | — | {primary model consensus} |
+| Downside (25th) | ${value} | ~{X}% | {risk} |
+| Bear Case (5th) | ${value} | ~{X}% | {risk} |
+
+**Key Levels**: Support ${S1}, ${S2} | Resistance ${R1}, ${R2} | Max Pain ${MP} | GEX Flip ${GEX}
+**Regime**: {trending_up/down/range_bound/high_volatility}
+**Catalysts**: {earnings date, FOMC, etc.}
+**Model Agreement**: {do quant + options + TA converge or diverge?}
+**Risks**: {top 2-3 risks that could invalidate the forecast}
+
+*Predictions are probabilistic estimates based on historical patterns and current positioning. They are NOT certainties. Models cannot predict regime changes, black swan events, or breaking news. Always consider your own risk tolerance and do independent research.*
+
+After generating the prediction, log it by writing a JSON file to the predictions directory for future accuracy tracking. The prediction log should include: ticker, prediction_date, horizon_days, target_date, current_price, predicted_range (low/mid/high from 25th/50th/75th percentiles), confidence_interval (ci_5/ci_25/ci_75/ci_95), model_weights used, and key_factors.
+
+If any tool category fails entirely, proceed with remaining categories. Adjust weights proportionally. Note which data sources were unavailable.
+    </template>
+  </subagent>
+
+  <!-- ==================== BACKTESTING SUB-AGENT ==================== -->
+
+  <subagent name="Backtesting" tools="3-5" budget="~500 tokens output">
+    <triggers>
+      <use>"backtest RSI oversold on AAPL", "test MACD crossover strategy", "win rate for golden cross", "how accurate are my predictions?"</use>
+      <skip>"AAPL Sharpe ratio" (1 tool → inline get_risk_metrics)</skip>
+    </triggers>
+    <template>
+You are a financial research sub-agent with access to Zaza MCP tools.
+
+**Task**: Backtest {SIGNAL_OR_STRATEGY} on {TICKER}. {SPECIFIC_QUESTION}
+
+**Workflow** (call tools based on what's needed):
+1. get_signal_backtest(ticker="{TICKER}", signal="{SIGNAL}", lookback_years={YEARS|5})
+   - Signals: rsi_below_30, rsi_above_70, macd_crossover, golden_cross, death_cross, bollinger_lower_touch, volume_spike
+2. If full strategy: get_strategy_simulation(ticker="{TICKER}", entry_signal="{ENTRY}", exit_signal="{EXIT}", stop_loss_pct={SL|5}, take_profit_pct={TP|null})
+3. get_risk_metrics(ticker="{TICKER}", period="5y")
+4. If prediction accuracy requested: get_prediction_score(ticker="{TICKER}")
+
+**Synthesis**: Evaluate strategy viability:
+- Win rate at different horizons (5d, 20d, 60d)
+- Average return per signal vs buy-and-hold
+- Risk-adjusted metrics (Sharpe, Sortino, max drawdown)
+- Statistical significance: is sample size large enough? (minimum ~30 signals)
+- Profit factor (gross wins / gross losses)
+
+**Output Format**:
+**{SIGNAL} Backtest on {TICKER}** ({YEARS}yr lookback)
+| Metric | Value |
+|--------|-------|
+| Total Signals | {N} |
+| Win Rate (5d) | {%} |
+| Win Rate (20d) | {%} |
+| Win Rate (60d) | {%} |
+| Avg Return | {%} |
+| Best Trade | {%} |
+| Worst Trade | {%} |
+| Profit Factor | {X} |
+| Max Drawdown | {%} |
+| Sharpe Ratio | {X} |
+| vs Buy&amp;Hold | {outperform/underperform by X%} |
+
+**Sample Size**: {adequate/small — N signals over Y years}
+**Statistical Note**: {significance assessment}
+**Assessment**: {1-2 sentence verdict on strategy viability}
+
+*Backtest results do NOT equal future performance. Real trading involves costs, slippage, and liquidity constraints not modeled here. Small sample sizes reduce statistical reliability.*
+
+If any tool fails, proceed with available data. Always note sample size and statistical significance.
+    </template>
+  </subagent>
+
 </delegation>
 
 <!-- ================================================================ -->
@@ -252,7 +810,7 @@ Zaza is a financial research MCP server (66 tools, 11 domains) that extends Clau
     ├── api/ (yfinance_client, edgar_client, reddit_client, stocktwits_client, fred_client)
     ├── cache/store.py (diskcache SQLite at ~/.zaza/cache/ with TTL per category)
     ├── tools/ (finance/15, ta/9, options/7, sentiment/4, macro/5, quantitative/6, institutional/4, earnings/4, backtesting/4, screener/3, browser/5)
-    └── utils/ (indicators.py, models.py, sentiment.py)
+    └── utils/ (indicators.py, models.py, sentiment.py, predictions.py)
   </structure>
 
   <data-sources>
