@@ -170,25 +170,6 @@ Zaza is a financial research MCP server (66 tools, 11 domains) that extends Clau
   </decision-matrix>
 
   <!-- ============================================================ -->
-  <!-- CONTEXT BUDGET ESTIMATES -->
-  <!-- ============================================================ -->
-
-  <context-budgets>
-    | Sub-Agent | Raw Tool Output | Synthesized Output | Context Saved |
-    |-----------|:--------------:|:-----------------:|:------------:|
-    | TA | ~8k tokens | ~500 tokens | 94% |
-    | Comparative | ~6k tokens | ~800 tokens | 87% |
-    | Filings | ~15k tokens | ~1k tokens | 93% |
-    | Discovery | ~10k tokens | ~800 tokens | 92% |
-    | Browser | ~12k tokens | ~500 tokens | 96% |
-    | Options | ~5k tokens | ~500 tokens | 90% |
-    | Sentiment | ~4k tokens | ~500 tokens | 88% |
-    | Macro | ~4k tokens | ~500 tokens | 88% |
-    | Prediction | ~20k tokens | ~1.5k tokens | 93% |
-    | Backtesting | ~4k tokens | ~500 tokens | 88% |
-  </context-budgets>
-
-  <!-- ============================================================ -->
   <!-- ERROR HANDLING & GRACEFUL DEGRADATION -->
   <!-- ============================================================ -->
 
