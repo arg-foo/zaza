@@ -1,0 +1,8 @@
+{
+  "mcpServers": {
+    "zaza": {
+      "command": "docker",
+      "args": ["exec", "-i", "zaza-zaza-1", "python", "-m", "zaza.server"]
+    }
+  }
+}
