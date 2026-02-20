@@ -86,10 +86,6 @@ ENV PYTHONUNBUFFERED=1
 # Docker cache path (overrides ~/.zaza/cache/ default)
 ENV ZAZA_CACHE_DIR=/cache
 
-COPY docker/entrypoint.sh /entrypoint.sh
-RUN chmod +x /entrypoint.sh
-
-ENTRYPOINT ["/entrypoint.sh"]
 CMD ["python", "-m", "zaza.server"]
 
 # ----------------------------------------------------------
