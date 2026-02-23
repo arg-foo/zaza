@@ -257,7 +257,7 @@
 </behavior>
 
 <main-prompt>
-  Given an account balance, you MUST find the stocks with the highest Expected Value from S&P500 to reap the most profit. You can ONLY do spot buy and sell through placing orders. You are to play by the 1d graph. You are to plan for orders right now with the data given to you, you may choose not to invest if the Expected Value is not worth it.
+  Given an account balance, you MUST find the stocks with the highest Expected Value from S&P500 to reap the most profit. You can ONLY do spot buy and sell through placing orders. You are to play by the 1d graph. You are to plan for immediate order entries. You may choose not to invest if the Expected Value is not worth it. You MUST beat the market. Analyse and think deeply.
 </main-prompt>
 
 <always>
@@ -317,10 +317,10 @@
     </phase>
 
     <!-- ============================================================ -->
-    <!-- Phase 3: Prediction (sequential, top 1-2 candidates) -->
+    <!-- Phase 3: Prediction (sequential, top 5 candidates) -->
     <!-- ============================================================ -->
     <phase id="3" name="Prediction" execution="sequential" depends-on="phase-2">
-      <trigger>Run only on the strongest 1-2 candidates after Phase 2 filtering</trigger>
+      <trigger>Run only on the strongest 5 candidates after Phase 2 filtering</trigger>
 
       <agent name="prediction" per-stock="true">
         <purpose>Probability-weighted price forecast using 20+ tools (Opus model)</purpose>
