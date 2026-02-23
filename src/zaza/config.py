@@ -13,6 +13,10 @@ PREDICTIONS_DIR = CACHE_DIR / "predictions"
 # Docker override: set PKSCREENER_CONTAINER to change the PKScreener container name
 PKSCREENER_CONTAINER = os.getenv("PKSCREENER_CONTAINER", "pkscreener")
 
+# PKScreener market index mapping (option numbers from PKScreener CLI)
+MARKET_INDEX_MAP: dict[str, str] = {"NASDAQ": "15", "NSE": "12"}
+PKSCREENER_DEFAULT_MARKET = os.getenv("PKSCREENER_DEFAULT_MARKET", "NASDAQ")
+
 # Docker binary path: env var → shutil.which → common known locations
 _DOCKER_KNOWN_PATHS = ("/usr/local/bin/docker", "/usr/bin/docker", "/opt/homebrew/bin/docker")
 

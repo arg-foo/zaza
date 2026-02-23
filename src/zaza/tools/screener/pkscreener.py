@@ -13,61 +13,78 @@ from typing import Any
 import structlog
 from mcp.server.fastmcp import FastMCP
 
+from zaza.config import MARKET_INDEX_MAP, PKSCREENER_DEFAULT_MARKET
 from zaza.tools.screener.docker import run_pkscreener
 
 logger = structlog.get_logger(__name__)
 
 # Allowed scan types -- validated before passing to Docker exec
+# Each value has a "suffix" that goes after "X:{market_index}:" in the -o flag
 SCAN_TYPES: dict[str, dict[str, str]] = {
     "breakout": {
         "name": "breakout",
         "description": "Stocks breaking out of consolidation patterns",
-        "args": "-a Y -o X:12:9:2.5",
+        "suffix": "9:2.5",
     },
     "momentum": {
         "name": "momentum",
         "description": "Stocks with strong upward momentum (RSI, MACD)",
-        "args": "-a Y -o X:12:7",
+        "suffix": "7",
     },
     "consolidation": {
         "name": "consolidation",
         "description": "Stocks in consolidation / narrow range",
-        "args": "-a Y -o X:12:10",
+        "suffix": "10",
     },
     "volume": {
         "name": "volume",
         "description": "Stocks with unusual volume activity",
-        "args": "-a Y -o X:12:9:1",
+        "suffix": "9:1",
     },
     "reversal": {
         "name": "reversal",
         "description": "Stocks showing potential reversal signals",
-        "args": "-a Y -o X:12:6",
+        "suffix": "6",
     },
     "ipo": {
         "name": "ipo",
         "description": "Recent IPO stocks with momentum",
-        "args": "-a Y -o X:12:4",
+        "suffix": "4",
     },
     "short_squeeze": {
         "name": "short_squeeze",
         "description": "Stocks with short squeeze potential",
-        "args": "-a Y -o X:12:11",
+        "suffix": "11",
     },
     "bullish": {
         "name": "bullish",
         "description": "Bullish pattern recognition",
-        "args": "-a Y -o X:12:1",
+        "suffix": "1",
     },
     "bearish": {
         "name": "bearish",
         "description": "Bearish pattern recognition",
-        "args": "-a Y -o X:12:2",
+        "suffix": "2",
     },
 }
 
 # Regex to validate scan type: only alphanumeric and underscore
 _SAFE_PATTERN = re.compile(r"^[a-zA-Z0-9_]+$")
+
+
+def _resolve_market_index(market: str) -> str:
+    """Resolve market name to PKScreener index number.
+
+    Raises:
+        ValueError: If market is not supported.
+    """
+    market_upper = market.upper()
+    if market_upper not in MARKET_INDEX_MAP:
+        supported = ", ".join(sorted(MARKET_INDEX_MAP.keys()))
+        raise ValueError(
+            f"Unsupported market '{market}'. Supported: {supported}"
+        )
+    return MARKET_INDEX_MAP[market_upper]
 
 
 def _parse_table_output(output: str) -> list[dict[str, str]]:
@@ -113,16 +130,14 @@ def register(mcp: FastMCP) -> None:
     @mcp.tool()
     async def screen_stocks(
         scan_type: str,
-        market: str = "NASDAQ",
-        filters: str | None = None,
+        market: str = PKSCREENER_DEFAULT_MARKET,
     ) -> str:
         """Screen stocks using PKScreener Docker sidecar.
 
         Args:
             scan_type: Type of scan. One of: breakout, momentum, consolidation,
                        volume, reversal, ipo, short_squeeze, bullish, bearish.
-            market: Market to scan (default NASDAQ).
-            filters: Optional additional filter string.
+            market: Market to scan (default NASDAQ). Supported: NASDAQ, NSE.
 
         Returns:
             JSON with screening results.
@@ -145,12 +160,15 @@ def register(mcp: FastMCP) -> None:
                     default=str,
                 )
 
-            config = SCAN_TYPES[scan_type_lower]
-            args = config["args"].split()
+            # Resolve market to PKScreener index number
+            try:
+                index = _resolve_market_index(market)
+            except ValueError as e:
+                return json.dumps({"error": str(e)}, default=str)
 
-            # Add market filter
-            if market:
-                args.extend(["-e", market])
+            config = SCAN_TYPES[scan_type_lower]
+            suffix = config["suffix"]
+            args = ["-o", f"X:{index}:{suffix}"]
 
             output = await run_pkscreener(args)
             results = _parse_table_output(output)
@@ -158,7 +176,7 @@ def register(mcp: FastMCP) -> None:
             return json.dumps(
                 {
                     "scan_type": scan_type_lower,
-                    "market": market,
+                    "market": market.upper(),
                     "total_results": len(results),
                     "results": results,
                 },
@@ -184,11 +202,15 @@ def register(mcp: FastMCP) -> None:
         return json.dumps({"strategies": strategies}, default=str)
 
     @mcp.tool()
-    async def get_buy_sell_levels(ticker: str) -> str:
+    async def get_buy_sell_levels(
+        ticker: str,
+        market: str = PKSCREENER_DEFAULT_MARKET,
+    ) -> str:
         """Get buy/sell support/resistance levels for a single ticker.
 
         Args:
             ticker: Stock ticker symbol.
+            market: Market the ticker belongs to (default NASDAQ). Supported: NASDAQ, NSE.
 
         Returns:
             JSON with buy level, sell level, support, resistance.
@@ -201,8 +223,14 @@ def register(mcp: FastMCP) -> None:
                     default=str,
                 )
 
+            # Resolve market to PKScreener index number
+            try:
+                index = _resolve_market_index(market)
+            except ValueError as e:
+                return json.dumps({"error": str(e)}, default=str)
+
             output = await run_pkscreener(
-                ["-a", "Y", "-o", "X:0:0", "-e", ticker.upper()]
+                ["--stocklist", ticker.upper(), "-o", f"X:{index}:0"]
             )
             levels = _parse_levels_output(output)
 
