@@ -399,6 +399,27 @@ class TestScreenStocks:
         o_idx = call_args.index("-o")
         assert call_args[o_idx + 1].startswith("X:12:")
 
+    @pytest.mark.asyncio
+    async def test_screen_stocks_uses_scan_timeout(self) -> None:
+        """screen_stocks passes PKSCREENER_SCAN_TIMEOUT (600s) to run_pkscreener."""
+        from mcp.server.fastmcp import FastMCP
+
+        from zaza.config import PKSCREENER_SCAN_TIMEOUT
+        from zaza.tools.screener.pkscreener import register
+
+        mcp = FastMCP("test")
+        register(mcp)
+
+        with patch(_PATCH_RUN, new_callable=AsyncMock) as mock_run:
+            mock_run.return_value = "Stock\tLTP\nAAPL\t195.0\n"
+            tool = mcp._tool_manager.get_tool("screen_stocks")
+            await tool.run(arguments={"scan_type": "breakout"})
+
+        mock_run.assert_called_once()
+        call_kwargs = mock_run.call_args[1]
+        assert "timeout" in call_kwargs
+        assert call_kwargs["timeout"] == PKSCREENER_SCAN_TIMEOUT
+
 
 # ---------------------------------------------------------------------------
 # TASK-023b: get_screening_strategies
@@ -587,3 +608,24 @@ class TestBuySellLevels:
         call_args = mock_run.call_args[0][0]
         o_idx = call_args.index("-o")
         assert call_args[o_idx + 1] == "X:12:0"
+
+    @pytest.mark.asyncio
+    async def test_buy_sell_levels_uses_ticker_timeout(self) -> None:
+        """get_buy_sell_levels passes PKSCREENER_TICKER_TIMEOUT (120s) to run_pkscreener."""
+        from mcp.server.fastmcp import FastMCP
+
+        from zaza.config import PKSCREENER_TICKER_TIMEOUT
+        from zaza.tools.screener.pkscreener import register
+
+        mcp = FastMCP("test")
+        register(mcp)
+
+        with patch(_PATCH_RUN, new_callable=AsyncMock) as mock_run:
+            mock_run.return_value = "Stock: AAPL\nBuy Level: 190.5\n"
+            tool = mcp._tool_manager.get_tool("get_buy_sell_levels")
+            await tool.run(arguments={"ticker": "AAPL"})
+
+        mock_run.assert_called_once()
+        call_kwargs = mock_run.call_args[1]
+        assert "timeout" in call_kwargs
+        assert call_kwargs["timeout"] == PKSCREENER_TICKER_TIMEOUT

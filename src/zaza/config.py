@@ -17,6 +17,10 @@ PKSCREENER_CONTAINER = os.getenv("PKSCREENER_CONTAINER", "pkscreener")
 MARKET_INDEX_MAP: dict[str, str] = {"NASDAQ": "15", "NSE": "12"}
 PKSCREENER_DEFAULT_MARKET = os.getenv("PKSCREENER_DEFAULT_MARKET", "NASDAQ")
 
+# PKScreener operation timeouts (seconds)
+PKSCREENER_SCAN_TIMEOUT = int(os.getenv("PKSCREENER_SCAN_TIMEOUT", "600"))
+PKSCREENER_TICKER_TIMEOUT = int(os.getenv("PKSCREENER_TICKER_TIMEOUT", "120"))
+
 # Docker binary path: env var → shutil.which → common known locations
 _DOCKER_KNOWN_PATHS = ("/usr/local/bin/docker", "/usr/bin/docker", "/opt/homebrew/bin/docker")
 

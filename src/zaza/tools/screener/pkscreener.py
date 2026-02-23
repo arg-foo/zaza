@@ -13,7 +13,12 @@ from typing import Any
 import structlog
 from mcp.server.fastmcp import FastMCP
 
-from zaza.config import MARKET_INDEX_MAP, PKSCREENER_DEFAULT_MARKET
+from zaza.config import (
+    MARKET_INDEX_MAP,
+    PKSCREENER_DEFAULT_MARKET,
+    PKSCREENER_SCAN_TIMEOUT,
+    PKSCREENER_TICKER_TIMEOUT,
+)
 from zaza.tools.screener.docker import run_pkscreener
 
 logger = structlog.get_logger(__name__)
@@ -170,7 +175,7 @@ def register(mcp: FastMCP) -> None:
             suffix = config["suffix"]
             args = ["-o", f"X:{index}:{suffix}"]
 
-            output = await run_pkscreener(args)
+            output = await run_pkscreener(args, timeout=PKSCREENER_SCAN_TIMEOUT)
             results = _parse_table_output(output)
 
             return json.dumps(
@@ -230,7 +235,8 @@ def register(mcp: FastMCP) -> None:
                 return json.dumps({"error": str(e)}, default=str)
 
             output = await run_pkscreener(
-                ["--stocklist", ticker.upper(), "-o", f"X:{index}:0"]
+                ["--stocklist", ticker.upper(), "-o", f"X:{index}:0"],
+                timeout=PKSCREENER_TICKER_TIMEOUT,
             )
             levels = _parse_levels_output(output)
 
