@@ -49,9 +49,9 @@ case "$CMD" in
   # ── summary ─────────────────────────────────────────────────────────
   summary)
     SESSIONS="$(grep -l 'SessionStart' "${LOG_FILES[@]}" 2>/dev/null | wc -l | tr -d ' ' || echo 0)"
-    TOOL_CALLS="$(cat "${LOG_FILES[@]}" | grep '"event":"PreToolUse"' 2>/dev/null | wc -l | tr -d ' ')"
-    ERRORS="$(cat "${LOG_FILES[@]}" | grep '"event":"PostToolUseFailure"' 2>/dev/null | wc -l | tr -d ' ')"
-    SUBAGENTS="$(cat "${LOG_FILES[@]}" | grep '"event":"SubagentStart"' 2>/dev/null | wc -l | tr -d ' ')"
+    TOOL_CALLS="$( (grep '"event":"PreToolUse"' "${LOG_FILES[@]}" 2>/dev/null || true) | wc -l | tr -d ' ')"
+    ERRORS="$( (grep '"event":"PostToolUseFailure"' "${LOG_FILES[@]}" 2>/dev/null || true) | wc -l | tr -d ' ')"
+    SUBAGENTS="$( (grep '"event":"SubagentStart"' "${LOG_FILES[@]}" 2>/dev/null || true) | wc -l | tr -d ' ')"
 
     if [ "$TOOL_CALLS" -gt 0 ]; then
       ERROR_RATE="$(awk "BEGIN {printf \"%.1f\", ($ERRORS/$TOOL_CALLS)*100}")"
@@ -166,7 +166,7 @@ case "$CMD" in
     echo "=== Most Queried Tickers (top $TOP) ==="
     cat "${LOG_FILES[@]}" \
       | jq -r 'select(.event == "PreToolUse") | .tool_input | (.ticker // .symbol // .tickers // .symbols // empty)' 2>/dev/null \
-      | tr ',' '\n' | tr -d '[] "' | grep -v '^$' \
+      | tr ',' '\n' | tr -d '[] "' | (grep -v '^$' || true) \
       | tr '[:lower:]' '[:upper:]' \
       | sort | uniq -c | sort -rn | head -n "$TOP" \
       | awk '{printf "  %-10s %s calls\n", $2, $1}'
@@ -228,8 +228,8 @@ case "$CMD" in
       COUNT=0
       while IFS= read -r f && [ "$COUNT" -lt "$LAST" ]; do
         FNAME="$(basename "$f")"
-        TOOLS="$(grep '"event":"PreToolUse"' "$f" 2>/dev/null | wc -l | tr -d ' ')"
-        ERRS="$(grep '"event":"PostToolUseFailure"' "$f" 2>/dev/null | wc -l | tr -d ' ')"
+        TOOLS="$( (grep '"event":"PreToolUse"' "$f" 2>/dev/null || true) | wc -l | tr -d ' ')"
+        ERRS="$( (grep '"event":"PostToolUseFailure"' "$f" 2>/dev/null || true) | wc -l | tr -d ' ')"
         echo "  $FNAME  tools:$TOOLS errors:$ERRS"
         COUNT=$((COUNT + 1))
       done < <(ls -t "${LOG_FILES[@]}" 2>/dev/null)

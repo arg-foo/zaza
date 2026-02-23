@@ -92,9 +92,9 @@ case "$EVENT" in
 
     # Write summary to index.jsonl
     if [ -f "$LOG_FILE" ]; then
-      TOOL_CALLS="$(grep '"event":"PreToolUse"' "$LOG_FILE" 2>/dev/null | wc -l | tr -d ' ')"
-      ERRORS="$(grep '"event":"PostToolUseFailure"' "$LOG_FILE" 2>/dev/null | wc -l | tr -d ' ')"
-      SUBAGENTS="$(grep '"event":"SubagentStart"' "$LOG_FILE" 2>/dev/null | wc -l | tr -d ' ')"
+      TOOL_CALLS="$( (grep '"event":"PreToolUse"' "$LOG_FILE" 2>/dev/null || true) | wc -l | tr -d ' ')"
+      ERRORS="$( (grep '"event":"PostToolUseFailure"' "$LOG_FILE" 2>/dev/null || true) | wc -l | tr -d ' ')"
+      SUBAGENTS="$( (grep '"event":"SubagentStart"' "$LOG_FILE" 2>/dev/null || true) | wc -l | tr -d ' ')"
       START_TS="$(head -1 "$LOG_FILE" | jq -r '.timestamp // ""' 2>/dev/null || echo "")"
 
       jq -n -c \
