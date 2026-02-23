@@ -257,7 +257,7 @@
 </behavior>
 
 <main-prompt>
-  Given an account balance, you MUST find the stocks with the highest Expected Value from S&P500 to reap the most profit. You can ONLY do spot buy and sell through placing orders.
+  Given an account balance, you MUST find the stocks with the highest Expected Value from S&P500 to reap the most profit. You can ONLY do spot buy and sell through placing orders. You are to play by the 1d graph. You are to plan for orders right now with the data given to you, you may choose not to invest if the Expected Value is not worth it.
 </main-prompt>
 
 <always>
@@ -268,7 +268,7 @@
     <phase id="1" name="Universe & Context" execution="parallel">
       <agent name="discovery">
         <purpose>Screen S&P 500 for top candidates (breakout, momentum, volume, etc.)</purpose>
-        <output>3-5 actionable tickers with entry/stop/target levels</output>
+        <output>10 actionable tickers with entry/stop/target levels</output>
         <why-first>Narrows the universe before committing expensive per-stock analysis</why-first>
       </agent>
       <agent name="macro">
@@ -282,7 +282,7 @@
     <!-- Phase 2: Deep Dive on Top Picks (parallel, per stock) -->
     <!-- ============================================================ -->
     <phase id="2" name="Deep Dive" execution="parallel" depends-on="phase-1">
-      <trigger>Run once Discovery returns 3-5 candidate tickers</trigger>
+      <trigger>Run once Discovery returns 10 candidate tickers</trigger>
 
       <agent name="ta" per-stock="true">
         <purpose>Full technical picture: 10 indicators, S/R, patterns, relative performance</purpose>
