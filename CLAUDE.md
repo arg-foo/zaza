@@ -11,7 +11,6 @@ Zaza is a financial research MCP server (66 tools, 11 domains) that extends Clau
   <test-pattern>uv run pytest tests/ -k "test_momentum"</test-pattern>
   <lint>uv run ruff check src/ tests/ &amp;&amp; uv run mypy src/</lint>
   <playwright>uv run playwright install chromium</playwright>
-  <pkscreener>docker run -d --name pkscreener -e PKSCREENER_DOCKER=1 -v pkscreener-data:/PKScreener-main/actions_data pkjmesra/pkscreener:latest sleep infinity</pkscreener>
   <verify>uv run python -m zaza.server --check</verify>
 </commands>
 
@@ -43,7 +42,6 @@ Zaza is a financial research MCP server (66 tools, 11 domains) that extends Clau
     <source name="FRED"         key="yes (free)"   domains="Economic calendar" />
     <source name="CNN F&amp;G"  key="no (scrape)"  domains="Market sentiment" />
     <source name="FINRA ADF"    key="no (scrape)"  domains="Dark pool" />
-    <source name="PKScreener"   key="no (docker)"  domains="Stock screening" />
   </data-sources>
 
   <cache-ttl>
@@ -59,7 +57,6 @@ Zaza is a financial research MCP server (66 tools, 11 domains) that extends Clau
     <p>logging: structlog to stderr only -- stdout is MCP protocol</p>
     <p>retries: tenacity exponential backoff on all external API calls</p>
     <p>rate-limiting: asyncio.Semaphore per domain (EDGAR: 10/s, scraping: 1/s)</p>
-    <p>docker-exec: asyncio.create_subprocess_exec for PKScreener (never blocking subprocess.run)</p>
     <p>serialization: orjson for cache/responses. MCP SDK handles protocol serialization.</p>
     <p>validation: Pydantic via MCP SDK. Type hints on all tool functions.</p>
     <p>error-handling: every tool returns {status, data/error} -- never unhandled exceptions</p>
@@ -144,3 +141,104 @@ Zaza is a financial research MCP server (66 tools, 11 domains) that extends Clau
     Use solutions-architect sub agent for analyzing requirements, creating technical proposals, evaluating solution feasibility, finding open-source projects, or designing system architectures.
   </technical-design>
 </always>
+
+<rtk-instructions>
+  # RTK (Rust Token Killer) - Token-Optimized Commands
+
+  ## Golden Rule
+
+  **Always prefix commands with `rtk`**. If RTK has a dedicated filter, it uses it. If not, it passes through unchanged. This means RTK is always safe to use.
+
+  **Important**: Even in command chains with `&&`, use `rtk`:
+  ```bash
+  # ❌ Wrong
+  git add . && git commit -m "msg" && git push
+
+  # ✅ Correct
+  rtk git add . && rtk git commit -m "msg" && rtk git push
+  ```
+
+  ## RTK Commands by Workflow
+
+  ### Git
+  ```bash
+  rtk git status          # Compact status
+  rtk git log             # Compact log (works with all git flags)
+  rtk git diff            # Compact diff (80%)
+  rtk git show            # Compact show (80%)
+  rtk git add             # Ultra-compact confirmations (59%)
+  rtk git commit          # Ultra-compact confirmations (59%)
+  rtk git push            # Ultra-compact confirmations
+  rtk git pull            # Ultra-compact confirmations
+  rtk git branch          # Compact branch list
+  rtk git fetch           # Compact fetch
+  rtk git stash           # Compact stash
+  rtk git worktree        # Compact worktree
+  ```
+
+  Note: Git passthrough works for ALL subcommands, even those not explicitly listed.
+
+  ### GitHub
+  ```bash
+  rtk gh pr view <num>    # Compact PR view (87%)
+  rtk gh pr checks        # Compact PR checks (79%)
+  rtk gh run list         # Compact workflow runs (82%)
+  rtk gh issue list       # Compact issue list (80%)
+  rtk gh api              # Compact API responses (26%)
+  ```
+
+  ### Files & Search
+  ```bash
+  rtk ls <path>           # Tree format, compact (65%)
+  rtk read <file>         # Code reading with filtering (60%)
+  rtk grep <pattern>      # Search grouped by file (75%)
+  rtk find <pattern>      # Find grouped by directory (70%)
+  ```
+
+  ### Analysis & Debug
+  ```bash
+  rtk err <cmd>           # Filter errors only from any command
+  rtk log <file>          # Deduplicated logs with counts
+  rtk json <file>         # JSON structure without values
+  rtk deps                # Dependency overview
+  rtk env                 # Environment variables compact
+  rtk summary <cmd>       # Smart summary of command output
+  rtk diff                # Ultra-compact diffs
+  ```
+
+  ### Infrastructure
+  ```bash
+  rtk docker ps           # Compact container list
+  rtk docker images       # Compact image list
+  rtk docker logs <c>     # Deduplicated logs
+  ```
+
+  ### Python Tooling
+  ```bash
+  rtk uv sync             # Compact dependency sync output
+  rtk uv sync --dev       # Works with all uv sync flags
+  rtk uv run pytest       # Pytest failures only (90%)
+  rtk uv run pytest -x    # Works with all pytest flags
+  rtk uv run ruff check   # Ruff lint violations grouped (80%)
+  rtk uv run ruff format  # Ruff format output compact (70%)
+  rtk uv run uvicorn      # Compact server startup output
+  rtk uv pip list         # Compact package list
+  rtk uv pip install      # Compact install output
+  ```
+
+  ### Network
+  ```bash
+  rtk curl <url>          # Compact HTTP responses (70%)
+  rtk wget <url>          # Compact download output (65%)
+  ```
+
+  ### Meta Commands
+  ```bash
+  rtk gain                # View token savings statistics
+  rtk gain --history      # View command history with savings
+  rtk discover            # Analyze Claude Code sessions for missed RTK usage
+  rtk proxy <cmd>         # Run command without filtering (for debugging)
+  rtk init                # Add RTK instructions to CLAUDE.md
+  rtk init --global       # Add RTK to ~/.claude/CLAUDE.md
+  ```
+</rtk-instructions>
