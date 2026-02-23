@@ -23,6 +23,7 @@ from zaza.config import (
     MARKET_EXCHANGE_MAP,
     SCREENER_DEFAULT_MARKET,
     SCREENER_MAX_CANDIDATES,
+    SCREENER_PAGE_SIZE,
     SCREENER_TA_CONCURRENCY,
     SCREENER_TOP_N,
 )
@@ -135,17 +136,37 @@ def register(mcp: FastMCP) -> None:
 
             config = SCAN_TYPES[scan_lower]
 
-            # Phase 1: Build query and screen via yfinance
+            # Phase 1: Build query and paginate through all yfinance results
             query = config.build_query(exchange_code)
-            screen_result = await asyncio.to_thread(
-                yf.screen,
-                query,
-                size=SCREENER_MAX_CANDIDATES,
-                sortField=config.sort_field,
-                sortAsc=config.sort_asc,
-            )
+            quotes: list[dict[str, Any]] = []
+            offset = 0
 
-            quotes = screen_result.get("quotes", [])
+            while offset < SCREENER_MAX_CANDIDATES:
+                screen_result = await asyncio.to_thread(
+                    yf.screen,
+                    query,
+                    size=SCREENER_PAGE_SIZE,
+                    offset=offset,
+                    sortField=config.sort_field,
+                    sortAsc=config.sort_asc,
+                )
+                page_quotes = screen_result.get("quotes", [])
+                if not page_quotes:
+                    break
+                quotes.extend(page_quotes)
+                total = screen_result.get("total", 0)
+                offset += len(page_quotes)
+                logger.debug(
+                    "screen_page_fetched",
+                    scan_type=scan_lower,
+                    page_size=len(page_quotes),
+                    total_so_far=len(quotes),
+                    server_total=total,
+                )
+                # Stop if we've fetched all available results
+                if offset >= total:
+                    break
+
             if not quotes:
                 result = {
                     "scan_type": scan_lower,

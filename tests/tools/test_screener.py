@@ -101,9 +101,6 @@ class TestScreenStocks:
 
         from zaza.tools.screener.screener import register
 
-        mcp = FastMCP("test")
-        register(mcp)
-
         screen_resp = _make_screen_response(["AAPL", "MSFT", "GOOG"])
         history_records = _make_history_records()
 
@@ -115,6 +112,9 @@ class TestScreenStocks:
             mock_client = MagicMock()
             mock_client.get_history.return_value = history_records
             MockYFClient.return_value = mock_client
+
+            mcp = FastMCP("test")
+            register(mcp)
 
             tool = mcp._tool_manager.get_tool("screen_stocks")
             result_str = await tool.run(arguments={"scan_type": "breakout"})
@@ -283,6 +283,53 @@ class TestScreenStocks:
             assert "error" not in result, f"Scan type '{st}' returned error: {result}"
 
     @pytest.mark.asyncio
+    async def test_pagination_fetches_all_pages(self) -> None:
+        """screen_stocks paginates through all yf.screen() pages."""
+        from mcp.server.fastmcp import FastMCP
+
+        from zaza.tools.screener.screener import register
+
+        mcp = FastMCP("test")
+        register(mcp)
+
+        # Simulate 3 pages: 250 + 250 + 100 = 600 total candidates
+        page1 = [{"symbol": f"SYM{i}", "regularMarketPrice": 100.0,
+                   "regularMarketChangePercent": 1.0,
+                   "averageDailyVolume3Month": 1_000_000}
+                  for i in range(250)]
+        page2 = [{"symbol": f"SYM{i}", "regularMarketPrice": 100.0,
+                   "regularMarketChangePercent": 1.0,
+                   "averageDailyVolume3Month": 1_000_000}
+                  for i in range(250, 500)]
+        page3 = [{"symbol": f"SYM{i}", "regularMarketPrice": 100.0,
+                   "regularMarketChangePercent": 1.0,
+                   "averageDailyVolume3Month": 1_000_000}
+                  for i in range(500, 600)]
+
+        history_records = _make_history_records()
+
+        with (
+            patch("zaza.tools.screener.screener.yf") as mock_yf,
+            patch("zaza.tools.screener.screener.YFinanceClient") as MockYFClient,
+        ):
+            mock_yf.screen.side_effect = [
+                {"quotes": page1, "total": 600},
+                {"quotes": page2, "total": 600},
+                {"quotes": page3, "total": 600},
+            ]
+            mock_client = MagicMock()
+            mock_client.get_history.return_value = history_records
+            MockYFClient.return_value = mock_client
+
+            tool = mcp._tool_manager.get_tool("screen_stocks")
+            result_str = await tool.run(arguments={"scan_type": "momentum"})
+            result = json.loads(result_str)
+
+        assert "error" not in result
+        assert result["total_candidates"] == 600
+        assert mock_yf.screen.call_count == 3
+
+    @pytest.mark.asyncio
     async def test_cache_hit_returns_cached(self) -> None:
         """When cache has results, yf.screen is not called."""
         from mcp.server.fastmcp import FastMCP
@@ -437,15 +484,15 @@ class TestBuySellLevels:
 
         from zaza.tools.screener.screener import register
 
-        mcp = FastMCP("test")
-        register(mcp)
-
         history_records = _make_history_records()
 
         with patch("zaza.tools.screener.screener.YFinanceClient") as MockYFClient:
             mock_client = MagicMock()
             mock_client.get_history.return_value = history_records
             MockYFClient.return_value = mock_client
+
+            mcp = FastMCP("test")
+            register(mcp)
 
             tool = mcp._tool_manager.get_tool("get_buy_sell_levels")
             result_str = await tool.run(arguments={"ticker": "AAPL"})
