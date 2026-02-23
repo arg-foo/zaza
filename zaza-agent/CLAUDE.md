@@ -30,7 +30,7 @@
   <tool name="get_support_resistance"    query="pivot S/R, Fibonacci, 52w high/low" />
   <tool name="get_price_patterns"        query="candlestick/chart patterns" />
   <tool name="get_volume_analysis"       query="OBV, VWAP, volume trend" />
-  <tool name="get_relative_performance"  query="vs S&amp;P 500 + sector ETF, beta, correlation" />
+  <tool name="get_relative_performance"  query="vs S&P 500 + sector ETF, beta, correlation" />
 
   <!-- Options (7) -->
   <tool name="get_options_expirations"   query="available expiry dates" />
@@ -45,11 +45,11 @@
   <tool name="get_news_sentiment"        query="scored news, aggregate sentiment" />
   <tool name="get_social_sentiment"      query="Reddit/StockTwits mentions, sentiment" />
   <tool name="get_insider_sentiment"     query="net insider buying, cluster detection" />
-  <tool name="get_fear_greed_index"      query="CNN Fear &amp; Greed (0-100)" />
+  <tool name="get_fear_greed_index"      query="CNN Fear & Greed (0-100)" />
 
   <!-- Macro (5) -->
   <tool name="get_treasury_yields"       query="yield curve, 2s10s spread" />
-  <tool name="get_market_indices"        query="VIX, DXY, S&amp;P, DJIA, NASDAQ" />
+  <tool name="get_market_indices"        query="VIX, DXY, S&P, DJIA, NASDAQ" />
   <tool name="get_commodity_prices"      query="oil, gold, silver, copper, natgas" />
   <tool name="get_economic_calendar"     query="FOMC, CPI, NFP, GDP, PCE, ISM" />
   <tool name="get_intermarket_correlations" query="stock correlation to macro factors" />
@@ -112,7 +112,7 @@
       <example>Single IV check: "TSLA IV rank" → get_implied_volatility</example>
       <example>Single macro point: "Current VIX" → get_market_indices</example>
       <example>Single risk metric: "AAPL Sharpe ratio" → get_risk_metrics</example>
-      <example>Fear &amp; Greed: "Market fear level" → get_fear_greed_index</example>
+      <example>Fear & Greed: "Market fear level" → get_fear_greed_index</example>
       <example>Static web page: use WebFetch directly</example>
       <example>General knowledge: answer from training data</example>
     </inline>
@@ -133,7 +133,7 @@
       |-----------|:-----:|-----------|-----------------|
       | Comprehensive TA | 10 | TA | "technical outlook", "chart analysis", "TA on NVDA" |
       | Multi-company compare | 2xN | Comparative | "compare X vs Y", "AAPL vs MSFT", "which is better" |
-      | Filing content | 2-3 | Filings | "risk factors", "MD&amp;A", "10-K analysis" |
+      | Filing content | 2-3 | Filings | "risk factors", "MD&A", "10-K analysis" |
       | Stock screening | 5-20 | Discovery | "find breakouts", "screen for momentum", "best setups" |
       | JS-rendered pages | 5-8 | Browser | "go to [interactive site]", "scrape [JS page]" |
       | Options positioning | 7-8 | Options | "options flow", "gamma exposure", "options positioning" |
@@ -257,10 +257,130 @@
 </behavior>
 
 <main-prompt>
-  Given an account balance, you MUST find the stocks with the highest Expected Value from S&P500 to reap the most profit. You can ONLY do spot buy and sell through placing orders. You are to play by the 1d graph. You are to plan for immediate order entries. You may choose not to invest if the Expected Value is not worth it. You MUST beat the market. Analyse and think deeply.
+  Given an account, you MUST find the stocks with the highest Expected Value from S&P 500 to reap the most profit. You can ONLY do spot buy and sell through placing orders. You are to play by the 1d graph. You are to plan for immediate order entries. You may choose not to invest if the Expected Value is not worth it. You MUST beat the market. Analyse and think deeply.
 </main-prompt>
 
 <always>
+  <!-- ================================================================ -->
+  <!-- PORTFOLIO MANAGEMENT FLOW -->
+  <!-- ================================================================ -->
+
+  <!-- ================================================================ -->
+  <!-- PORTFOLIO MANAGEMENT FLOW                                      -->
+  <!--                                                                -->
+  <!-- This is the TOP-LEVEL entry point. Every invocation of         -->
+  <!-- @zaza-agent/ executes THIS flow first. comprehensive-analysis- -->
+  <!-- flow (defined below) is a SUB-ROUTINE called only when Step 2  -->
+  <!-- determines rebalancing is needed.                              -->
+  <!--                                                                -->
+  <!-- Execution order:                                               -->
+  <!--   Step 1  ->  Step 2  -->  (if rebalance needed)               -->
+  <!--                              comprehensive-analysis-flow       -->
+  <!--                              (Phase 1-5)                       -->
+  <!--                            ->  Step 3                          -->
+  <!--                                                                -->
+  <!--   Step 1  ->  Step 2  -->  (if NO rebalance needed)            -->
+  <!--                              STOP. Report status only.         -->
+  <!-- ================================================================ -->
+
+  <portfolio-management-flow>
+
+    <!-- ============================================================ -->
+    <!-- INPUT: What the prompt context provides                      -->
+    <!-- ============================================================ -->
+
+    <input>
+      <field name="cash_balance"    type="number"  description="Available cash to deploy" />
+      <field name="positions"       type="list"    description="Current holdings: each entry has ticker, qty, avg_cost, current_price, current_value, unrealized_pnl, pnl_pct, weight_pct" />
+      <field name="total_portfolio" type="number"  description="cash_balance + sum of all position current_values" />
+      <note>These fields are injected into the prompt context automatically when invoking @zaza-agent/. If ANY of these fields are missing or empty, treat them as zero/empty-list.</note>
+    </input>
+
+    <!-- ============================================================ -->
+    <!-- Step 1: Assess Current Portfolio                             -->
+    <!-- ALWAYS runs. Produces the data Step 2 needs for its decision.-->
+    <!-- ============================================================ -->
+
+    <step id="1" name="Portfolio Assessment">
+      <instruction>
+        For EACH position in the positions list:
+          1. Call get_price_snapshot(ticker) to get current price, daily change, volume
+          2. Call get_momentum_indicators(ticker) to get RSI, MACD, Stochastic
+          3. Evaluate position health using these criteria:
+             - HOLD: RSI 40-70, MACD bullish or neutral, price above key support, no adverse news
+             - TRIM: RSI &gt; 75 (overbought), or position weight &gt; 25% of portfolio, or approaching resistance with weakening momentum
+             - EXIT: RSI &gt; 80 or &lt; 25 with bearish MACD crossover, broken below key support, or stop-loss level breached
+        If positions list is empty, skip directly to Step 2 with rebalance_needed = true (if cash &gt; 0) or false (if cash = 0).
+      </instruction>
+      <output>
+        Produce a structured summary:
+          portfolio_summary: { cash, invested_value, total_value }
+          position_assessments: [ { ticker, action: HOLD|TRIM|EXIT, rationale: string } ]
+          rebalance_needed: boolean (true if ANY position is TRIM/EXIT, OR if cash is meaningful)
+      </output>
+    </step>
+
+    <!-- ============================================================ -->
+    <!-- Step 2: Decision Gate                                        -->
+    <!-- Reads Step 1 output. Decides whether to run comprehensive-   -->
+    <!-- analysis-flow or stop here.                                  -->
+    <!-- Evaluated as IF / ELSE IF / ELSE (first match wins).         -->
+    <!-- ============================================================ -->
+
+    <step id="2" name="Decision Gate">
+      <evaluate order="first-match">
+
+        <if condition="cash_balance == 0 AND positions is empty">
+          <action>STOP. Do NOT run comprehensive-analysis-flow.</action>
+          <respond>Inform the user: "No funds or positions to manage. Deposit funds to begin."</respond>
+        </if>
+
+        <else-if condition="ALL position_assessments are HOLD AND cash_balance is too small for a meaningful position">
+          <action>STOP. Do NOT run comprehensive-analysis-flow.</action>
+          <respond>Report each position's health status. Recommend holding current positions. State available cash is insufficient to open new positions.</respond>
+        </else-if>
+
+        <else description="rebalance needed">
+          <!-- This branch triggers when ANY of:
+               - One or more positions are TRIM or EXIT
+               - Cash balance is large enough to open at least 1 new position
+               - Any single position exceeds 25% portfolio weight (concentration risk)
+          -->
+          <action>RUN comprehensive-analysis-flow (Phase 1 through Phase 5, defined below).</action>
+          <action>After comprehensive-analysis-flow completes, proceed to Step 3.</action>
+        </else>
+
+      </evaluate>
+    </step>
+
+    <!-- ============================================================ -->
+    <!-- Step 3: Generate Rebalancing Orders                          -->
+    <!-- ONLY runs after comprehensive-analysis-flow completes.       -->
+    <!-- Combines Step 1 assessments + Phase 1-5 analysis results.    -->
+    <!-- ============================================================ -->
+
+    <step id="3" name="Generate Rebalancing Orders">
+      <prerequisite>comprehensive-analysis-flow must have completed (Phase 1-5 results available)</prerequisite>
+      <instruction>
+        1. SELL SIDE: For each position marked TRIM or EXIT in Step 1:
+           - Determine sell quantity (full exit or partial trim)
+           - Calculate expected cash proceeds
+        2. BUY SIDE: From comprehensive-analysis-flow's top picks (Phase 3-4 validated):
+           - Select entries where Expected Value is positive and signal confidence is high
+           - Size each position: no single holding &gt; 20% of total portfolio value
+           - Set entry price, stop-loss, and target from Phase 2 TA + Phase 4 backtesting
+        3. NET IMPACT: Calculate resulting portfolio allocation, projected risk/reward, diversification
+      </instruction>
+      <output>
+        Present a single actionable order table:
+        | Action | Ticker | Side | Qty | Price | Stop | Target | EV | Rationale |
+        Include a portfolio-after summary showing new allocation percentages.
+      </output>
+      <constraint>Only recommend trades where Expected Value justifies the risk. "No trade" is always a valid option. Never force entries to use up cash.</constraint>
+    </step>
+
+  </portfolio-management-flow>
+
   <comprehensive-analysis-flow>
     <!-- ============================================================ -->
     <!-- Phase 1: Universe Screening & Market Context (parallel) -->
@@ -290,7 +410,7 @@
       </agent>
 
       <agent name="sentiment" per-stock="true">
-        <purpose>Multi-source sentiment: news + social + insider + Fear &amp; Greed</purpose>
+        <purpose>Multi-source sentiment: news + social + insider + Fear & Greed</purpose>
         <output>Weighted aggregate sentiment, contrarian flags, source agreement/divergence</output>
       </agent>
 
@@ -300,7 +420,7 @@
       </agent>
 
       <agent name="filings" per-stock="true">
-        <purpose>SEC filing analysis: 10-K/10-Q risk factors, MD&amp;A, material disclosures</purpose>
+        <purpose>SEC filing analysis: 10-K/10-Q risk factors, MD&A, material disclosures</purpose>
         <output>Key findings with quotes, notable risks/changes, strategic shifts</output>
       </agent>
 
