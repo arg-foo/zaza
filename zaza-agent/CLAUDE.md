@@ -184,7 +184,6 @@
     <rule>If user asks for a sub-agent workflow but only 1 tool is relevant, handle inline</rule>
     <rule>Example: "AAPL support levels" → just get_support_resistance inline, not full TA sub-agent</rule>
     <rule>Example: "Fear greed index" → just get_fear_greed_index inline, not full Sentiment sub-agent</rule>
-    <rule>If PKScreener Docker is unavailable, Discovery sub-agent falls back to manual screening via get_momentum_indicators + get_volume_analysis across a watchlist</rule>
     <rule>If social API credentials missing, Sentiment sub-agent proceeds with news + insider + fear/greed only</rule>
   </fallback-rules>
 

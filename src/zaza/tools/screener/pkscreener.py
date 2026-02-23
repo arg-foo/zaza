@@ -194,8 +194,8 @@ def register(mcp: FastMCP) -> None:
             JSON with buy level, sell level, support, resistance.
         """
         try:
-            # Validate ticker (alphanumeric only, max 10 chars)
-            if not re.match(r"^[A-Za-z0-9.]{1,10}$", ticker):
+            # Validate ticker (alphanumeric, dots, hyphens; max 10 chars)
+            if not re.match(r"^[A-Za-z0-9.\-]{1,10}$", ticker):
                 return json.dumps(
                     {"error": f"Invalid ticker format: '{ticker}'"},
                     default=str,

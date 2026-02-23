@@ -9,7 +9,7 @@ import asyncio
 
 import structlog
 
-from zaza.config import PKSCREENER_CONTAINER
+from zaza.config import DOCKER_PATH, PKSCREENER_CONTAINER
 
 logger = structlog.get_logger(__name__)
 
@@ -29,7 +29,7 @@ async def run_pkscreener(args: list[str], timeout: int = 120) -> str:
         asyncio.TimeoutError: If the command times out.
     """
     proc = await asyncio.create_subprocess_exec(
-        "docker",
+        DOCKER_PATH,
         "exec",
         PKSCREENER_CONTAINER,
         "python3",
