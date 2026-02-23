@@ -90,18 +90,34 @@ def test_predictions_dir_follows_cache_dir(monkeypatch: object) -> None:
     importlib.reload(config_module)
 
 
-def test_pkscreener_container_env_override(monkeypatch: object) -> None:
-    """PKSCREENER_CONTAINER uses env var when set."""
-    monkeypatch.setenv("PKSCREENER_CONTAINER", "my-pkscreener")  # type: ignore[union-attr]
+def test_screener_default_market_env_override(monkeypatch: object) -> None:
+    """SCREENER_DEFAULT_MARKET uses env var when set."""
+    monkeypatch.setenv("SCREENER_DEFAULT_MARKET", "NYSE")  # type: ignore[union-attr]
     importlib.reload(config_module)
-    assert config_module.PKSCREENER_CONTAINER == "my-pkscreener"
+    assert config_module.SCREENER_DEFAULT_MARKET == "NYSE"
     # Clean up
-    monkeypatch.delenv("PKSCREENER_CONTAINER", raising=False)  # type: ignore[union-attr]
+    monkeypatch.delenv("SCREENER_DEFAULT_MARKET", raising=False)  # type: ignore[union-attr]
     importlib.reload(config_module)
 
 
-def test_pkscreener_container_default(monkeypatch: object) -> None:
-    """PKSCREENER_CONTAINER defaults to 'pkscreener'."""
-    monkeypatch.delenv("PKSCREENER_CONTAINER", raising=False)  # type: ignore[union-attr]
+def test_screener_default_market_default(monkeypatch: object) -> None:
+    """SCREENER_DEFAULT_MARKET defaults to 'NASDAQ'."""
+    monkeypatch.delenv("SCREENER_DEFAULT_MARKET", raising=False)  # type: ignore[union-attr]
     importlib.reload(config_module)
-    assert config_module.PKSCREENER_CONTAINER == "pkscreener"
+    assert config_module.SCREENER_DEFAULT_MARKET == "NASDAQ"
+
+
+def test_screener_results_cache_ttl() -> None:
+    """screener_results TTL is present in CACHE_TTL."""
+    assert "screener_results" in CACHE_TTL
+    assert CACHE_TTL["screener_results"] == 3600
+
+
+def test_market_exchange_map_has_expected_markets() -> None:
+    """MARKET_EXCHANGE_MAP has NASDAQ, NYSE, and AMEX."""
+    from zaza.config import MARKET_EXCHANGE_MAP
+
+    assert "NASDAQ" in MARKET_EXCHANGE_MAP
+    assert "NYSE" in MARKET_EXCHANGE_MAP
+    assert "AMEX" in MARKET_EXCHANGE_MAP
+    assert MARKET_EXCHANGE_MAP["NASDAQ"] == "NMS"

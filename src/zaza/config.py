@@ -1,7 +1,6 @@
 """Centralized configuration for the Zaza MCP server."""
 
 import os
-import shutil
 from pathlib import Path
 
 # Directories
@@ -9,37 +8,17 @@ from pathlib import Path
 CACHE_DIR = Path(os.getenv("ZAZA_CACHE_DIR", str(Path.home() / ".zaza" / "cache")))
 PREDICTIONS_DIR = CACHE_DIR / "predictions"
 
-# PKScreener Docker
-# Docker override: set PKSCREENER_CONTAINER to change the PKScreener container name
-PKSCREENER_CONTAINER = os.getenv("PKSCREENER_CONTAINER", "pkscreener")
+# Screener configuration
+SCREENER_DEFAULT_MARKET = os.getenv("SCREENER_DEFAULT_MARKET", "NASDAQ")
+SCREENER_MAX_CANDIDATES = int(os.getenv("SCREENER_MAX_CANDIDATES", "250"))
+SCREENER_TA_CONCURRENCY = max(1, int(os.getenv("SCREENER_TA_CONCURRENCY", "10")))
+SCREENER_TOP_N = int(os.getenv("SCREENER_TOP_N", "25"))
 
-# PKScreener market index mapping (option numbers from PKScreener CLI)
-MARKET_INDEX_MAP: dict[str, str] = {"NASDAQ": "15", "NSE": "12"}
-PKSCREENER_DEFAULT_MARKET = os.getenv("PKSCREENER_DEFAULT_MARKET", "NASDAQ")
-
-# PKScreener operation timeouts (seconds)
-PKSCREENER_SCAN_TIMEOUT = int(os.getenv("PKSCREENER_SCAN_TIMEOUT", "600"))
-PKSCREENER_TICKER_TIMEOUT = int(os.getenv("PKSCREENER_TICKER_TIMEOUT", "120"))
-
-# Docker binary path: env var → shutil.which → common known locations
-_DOCKER_KNOWN_PATHS = ("/usr/local/bin/docker", "/usr/bin/docker", "/opt/homebrew/bin/docker")
-
-
-def _resolve_docker_path() -> str:
-    """Resolve the docker binary path."""
-    env_path = os.getenv("DOCKER_PATH")
-    if env_path:
-        return env_path
-    which_path = shutil.which("docker")
-    if which_path:
-        return which_path
-    for p in _DOCKER_KNOWN_PATHS:
-        if os.path.isfile(p) and os.access(p, os.X_OK):
-            return p
-    return "docker"
-
-
-DOCKER_PATH = _resolve_docker_path()
+MARKET_EXCHANGE_MAP: dict[str, str] = {
+    "NASDAQ": "NMS",
+    "NYSE": "NYQ",
+    "AMEX": "ASE",
+}
 
 # SEC EDGAR
 EDGAR_USER_AGENT = "Zaza/1.0 (zaza-mcp@example.com)"
@@ -72,6 +51,7 @@ CACHE_TTL: dict[str, int] = {
     "quant_models": 14400,
     "backtest_results": 86400,
     "risk_metrics": 14400,
+    "screener_results": 3600,
 }
 
 

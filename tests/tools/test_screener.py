@@ -1,439 +1,373 @@
-"""Tests for screener tools (TASK-023).
+"""Tests for yfinance-powered stock screener tools.
 
-Tests PKScreener Docker integration with mocked subprocess calls.
+Tests screen_stocks, get_screening_strategies, get_buy_sell_levels,
+scoring functions, and query builders. All external APIs are mocked.
 """
 
 from __future__ import annotations
 
+import asyncio
+import importlib
 import json
-from unittest.mock import AsyncMock, patch
+from typing import Any
+from unittest.mock import MagicMock, patch
 
+import numpy as np
+import pandas as pd
 import pytest
 
-_PATCH_RUN = "zaza.tools.screener.pkscreener.run_pkscreener"
+# ---------------------------------------------------------------------------
+# Helpers / fixtures
+# ---------------------------------------------------------------------------
+
+@pytest.fixture(autouse=True)
+def _mock_file_cache() -> Any:
+    """Prevent all tests from writing to the real ~/.zaza/cache/ directory.
+
+    This autouse fixture patches FileCache so that register() never
+    creates real cache files on disk during tests.
+    """
+    with patch("zaza.tools.screener.screener.FileCache") as MockCache:
+        mock_cache = MagicMock()
+        mock_cache.get.return_value = None
+        mock_cache.make_key.return_value = "test_cache_key"
+        MockCache.return_value = mock_cache
+        yield MockCache
+
+
+def _make_ohlcv_df(n: int = 100) -> pd.DataFrame:
+    """Create a seeded random OHLCV DataFrame for deterministic tests."""
+    np.random.seed(42)
+    close = 100 + np.cumsum(np.random.randn(n) * 0.5)
+    high = close + np.abs(np.random.randn(n) * 0.3)
+    low = close - np.abs(np.random.randn(n) * 0.3)
+    open_ = close + np.random.randn(n) * 0.2
+    volume = np.random.randint(100_000, 10_000_000, size=n).astype(float)
+    return pd.DataFrame({
+        "Open": open_,
+        "High": high,
+        "Low": low,
+        "Close": close,
+        "Volume": volume,
+    })
+
+
+def _make_screen_response(symbols: list[str]) -> dict[str, Any]:
+    """Build a mock response matching yf.screen() output shape."""
+    quotes = []
+    for s in symbols:
+        quotes.append({
+            "symbol": s,
+            "shortName": f"{s} Inc.",
+            "regularMarketPrice": 150.0,
+            "regularMarketChangePercent": 2.5,
+            "averageDailyVolume3Month": 5_000_000,
+            "fiftyTwoWeekChangePercent": 85.0,
+            "marketCap": 1_000_000_000,
+            "fiftyTwoWeekHigh": 160.0,
+            "fiftyTwoWeekLow": 90.0,
+            "short_percentage_of_shares_outstanding": {"value": 15.0},
+        })
+    return {"quotes": quotes, "total": len(quotes)}
+
+
+def _make_history_records(n: int = 100) -> list[dict[str, Any]]:
+    """Create mock yfinance history records (list of dicts with OHLCV keys)."""
+    np.random.seed(42)
+    close = 100 + np.cumsum(np.random.randn(n) * 0.5)
+    records = []
+    for i in range(n):
+        records.append({
+            "Open": float(close[i] + np.random.randn() * 0.2),
+            "High": float(close[i] + abs(np.random.randn() * 0.3)),
+            "Low": float(close[i] - abs(np.random.randn() * 0.3)),
+            "Close": float(close[i]),
+            "Volume": int(np.random.randint(100_000, 10_000_000)),
+        })
+    return records
 
 
 # ---------------------------------------------------------------------------
-# ANSI stripping
-# ---------------------------------------------------------------------------
-
-class TestAnsiStripping:
-    """Tests for strip_ansi utility."""
-
-    def test_strips_color_codes(self) -> None:
-        """ANSI color codes are removed."""
-        from zaza.tools.screener.docker import strip_ansi
-
-        assert strip_ansi("\x1b[32mGreen\x1b[0m") == "Green"
-
-    def test_strips_cursor_codes(self) -> None:
-        """ANSI cursor movement codes are removed."""
-        from zaza.tools.screener.docker import strip_ansi
-
-        assert strip_ansi("\x1b[2JCleared\x1b[H") == "Cleared"
-
-    def test_strips_osc_sequences(self) -> None:
-        """OSC (Operating System Command) sequences are removed."""
-        from zaza.tools.screener.docker import strip_ansi
-
-        assert strip_ansi("\x1b]0;title\x07text") == "text"
-
-    def test_strips_private_mode_sequences(self) -> None:
-        """Private mode sequences like cursor hide/show are removed."""
-        from zaza.tools.screener.docker import strip_ansi
-        assert strip_ansi("\x1b[?25lHidden\x1b[?25h") == "Hidden"
-
-    def test_strips_carriage_return(self) -> None:
-        """Carriage returns from progress spinners are removed."""
-        from zaza.tools.screener.docker import strip_ansi
-        assert strip_ansi("progress\rDone") == "progressDone"
-
-    def test_passthrough_clean_text(self) -> None:
-        """Clean text passes through unchanged."""
-        from zaza.tools.screener.docker import strip_ansi
-
-        assert strip_ansi("Hello World 123") == "Hello World 123"
-
-
-# ---------------------------------------------------------------------------
-# Docker helper tests
-# ---------------------------------------------------------------------------
-
-class TestDockerHelper:
-    """Tests for the run_pkscreener helper."""
-
-    @pytest.mark.asyncio
-    async def test_run_pkscreener_success(self) -> None:
-        """Successful Docker exec returns stdout with ANSI stripped."""
-        from zaza.tools.screener.docker import run_pkscreener
-
-        mock_proc = AsyncMock()
-        mock_proc.returncode = 0
-        mock_proc.communicate = AsyncMock(
-            return_value=(b"\x1b[32moutput data\x1b[0m", b"")
-        )
-
-        with patch("asyncio.create_subprocess_exec", return_value=mock_proc) as mock_exec:
-            result = await run_pkscreener(["--arg1", "val1"])
-
-        assert result == "output data"
-
-    @pytest.mark.asyncio
-    async def test_run_pkscreener_failure(self) -> None:
-        """Failed Docker exec raises RuntimeError with ANSI stripped."""
-        from zaza.tools.screener.docker import run_pkscreener
-
-        mock_proc = AsyncMock()
-        mock_proc.returncode = 1
-        mock_proc.communicate = AsyncMock(
-            return_value=(b"", b"\x1b[31msome error\x1b[0m")
-        )
-
-        with patch("asyncio.create_subprocess_exec", return_value=mock_proc):
-            with pytest.raises(RuntimeError, match="some error"):
-                await run_pkscreener(["--bad-arg"])
-
-    @pytest.mark.asyncio
-    async def test_run_pkscreener_timeout(self) -> None:
-        """Docker exec timeout raises TimeoutError."""
-        import asyncio as aio
-
-        from zaza.tools.screener.docker import run_pkscreener
-
-        mock_proc = AsyncMock()
-        mock_proc.communicate = AsyncMock(
-            side_effect=aio.TimeoutError()
-        )
-
-        with patch("asyncio.create_subprocess_exec", return_value=mock_proc):
-            with pytest.raises(aio.TimeoutError):
-                await run_pkscreener(["--slow"], timeout=1)
-
-    @pytest.mark.asyncio
-    async def test_runner_env_in_exec_args(self) -> None:
-        """Docker exec includes -e RUNNER=1 to bypass Telegram login."""
-        from zaza.tools.screener.docker import run_pkscreener
-
-        mock_proc = AsyncMock()
-        mock_proc.returncode = 0
-        mock_proc.communicate = AsyncMock(return_value=(b"ok", b""))
-
-        with patch("asyncio.create_subprocess_exec", return_value=mock_proc) as mock_exec:
-            await run_pkscreener(["-o", "X:15:0"])
-
-        call_args = mock_exec.call_args[0]
-        # Find -e RUNNER=1 in the args
-        assert "-e" in call_args
-        e_idx = call_args.index("-e")
-        assert call_args[e_idx + 1] == "RUNNER=1"
-
-    @pytest.mark.asyncio
-    async def test_module_invocation(self) -> None:
-        """Docker exec uses python3 -m pkscreener.pkscreenercli."""
-        from zaza.tools.screener.docker import run_pkscreener
-
-        mock_proc = AsyncMock()
-        mock_proc.returncode = 0
-        mock_proc.communicate = AsyncMock(return_value=(b"ok", b""))
-
-        with patch("asyncio.create_subprocess_exec", return_value=mock_proc) as mock_exec:
-            await run_pkscreener(["-o", "X:15:0"])
-
-        call_args = mock_exec.call_args[0]
-        assert "python3" in call_args
-        assert "-m" in call_args
-        assert "pkscreener.pkscreenercli" in call_args
-
-    @pytest.mark.asyncio
-    async def test_mandatory_flags_prepended(self) -> None:
-        """Mandatory flags (-t, -a, y, -e) are prepended to user args."""
-        from zaza.tools.screener.docker import run_pkscreener
-
-        mock_proc = AsyncMock()
-        mock_proc.returncode = 0
-        mock_proc.communicate = AsyncMock(return_value=(b"ok", b""))
-
-        with patch("asyncio.create_subprocess_exec", return_value=mock_proc) as mock_exec:
-            await run_pkscreener(["-o", "X:15:7"])
-
-        call_args = mock_exec.call_args[0]
-        # After the python3 -m pkscreener.pkscreenercli, mandatory flags come first
-        cli_idx = call_args.index("pkscreener.pkscreenercli")
-        remaining = call_args[cli_idx + 1:]
-        # Mandatory flags: -t, -a, y, -e must come before user args
-        assert remaining[0] == "-t"
-        assert remaining[1] == "-a"
-        assert remaining[2] == "y"
-        assert remaining[3] == "-e"
-        # Then user args
-        assert "-o" in remaining
-        assert "X:15:7" in remaining
-
-    @pytest.mark.asyncio
-    async def test_full_exec_command_structure(self) -> None:
-        """Full docker exec command has correct positional argument structure."""
-        from zaza.tools.screener.docker import run_pkscreener
-
-        mock_proc = AsyncMock()
-        mock_proc.returncode = 0
-        mock_proc.communicate = AsyncMock(return_value=(b"ok", b""))
-
-        with patch("asyncio.create_subprocess_exec", return_value=mock_proc) as mock_exec:
-            await run_pkscreener(["-o", "X:15:7"])
-
-        call_args = mock_exec.call_args[0]
-        # Verify full positional structure: docker exec -e RUNNER=1 <container> python3 -m pkscreener.pkscreenercli -t -a y -e <user_args>
-        assert call_args[1] == "exec"
-        assert call_args[2] == "-e"
-        assert call_args[3] == "RUNNER=1"
-        # container name
-        assert call_args[5] == "python3"
-        assert call_args[6] == "-m"
-        assert call_args[7] == "pkscreener.pkscreenercli"
-        # mandatory flags
-        assert call_args[8] == "-t"
-        assert call_args[9] == "-a"
-        assert call_args[10] == "y"
-        assert call_args[11] == "-e"
-        # user args
-        assert call_args[12] == "-o"
-        assert call_args[13] == "X:15:7"
-
-    @pytest.mark.asyncio
-    async def test_timeout_kills_process(self) -> None:
-        """Process is killed on timeout to prevent leaks."""
-        import asyncio as aio
-        from zaza.tools.screener.docker import run_pkscreener
-
-        mock_proc = AsyncMock()
-        mock_proc.communicate = AsyncMock(side_effect=aio.TimeoutError())
-        mock_proc.kill = AsyncMock()
-        mock_proc.wait = AsyncMock()
-
-        with patch("asyncio.create_subprocess_exec", return_value=mock_proc):
-            with pytest.raises(aio.TimeoutError):
-                await run_pkscreener(["--slow"], timeout=1)
-
-        mock_proc.kill.assert_called_once()
-        mock_proc.wait.assert_called_once()
-
-
-# ---------------------------------------------------------------------------
-# TASK-023a: screen_stocks
+# TestScreenStocks
 # ---------------------------------------------------------------------------
 
 class TestScreenStocks:
-    """Tests for the screen_stocks tool."""
+    """Tests for the screen_stocks MCP tool."""
 
     @pytest.mark.asyncio
-    async def test_screen_stocks_valid_scan_type(self) -> None:
-        """Valid scan type returns parsed results."""
+    async def test_valid_scan_returns_results(self) -> None:
+        """Valid scan type with mocked yf.screen + history returns results."""
         from mcp.server.fastmcp import FastMCP
 
-        from zaza.tools.screener.pkscreener import register
+        from zaza.tools.screener.screener import register
 
         mcp = FastMCP("test")
         register(mcp)
 
-        mock_output = (
-            "Stock\tConsolidating\tBreaking-Loss\tLTP\tChange\tVolume\n"
-            "AAPL\tYes\tNo\t195.0\t2.5\t50000000\n"
-            "MSFT\tNo\tNo\t410.0\t1.2\t30000000\n"
-        )
+        screen_resp = _make_screen_response(["AAPL", "MSFT", "GOOG"])
+        history_records = _make_history_records()
 
-        with patch(_PATCH_RUN, new_callable=AsyncMock) as mock_run:
-            mock_run.return_value = mock_output
+        with (
+            patch("zaza.tools.screener.screener.yf") as mock_yf,
+            patch("zaza.tools.screener.screener.YFinanceClient") as MockYFClient,
+        ):
+            mock_yf.screen.return_value = screen_resp
+            mock_client = MagicMock()
+            mock_client.get_history.return_value = history_records
+            MockYFClient.return_value = mock_client
 
             tool = mcp._tool_manager.get_tool("screen_stocks")
-            result_str = await tool.run(
-                arguments={"scan_type": "breakout"}
-            )
+            result_str = await tool.run(arguments={"scan_type": "breakout"})
             result = json.loads(result_str)
 
         assert "error" not in result
         assert "results" in result
+        assert len(result["results"]) > 0
 
     @pytest.mark.asyncio
-    async def test_screen_stocks_uses_nasdaq_index(self) -> None:
-        """screen_stocks uses X:15: for NASDAQ market."""
+    async def test_invalid_scan_type_returns_error(self) -> None:
+        """Unknown scan type returns error without calling yfinance."""
         from mcp.server.fastmcp import FastMCP
 
-        from zaza.tools.screener.pkscreener import register
+        from zaza.tools.screener.screener import register
 
         mcp = FastMCP("test")
         register(mcp)
 
-        with patch(_PATCH_RUN, new_callable=AsyncMock) as mock_run:
-            mock_run.return_value = "Stock\tLTP\nAAPL\t195.0\n"
+        tool = mcp._tool_manager.get_tool("screen_stocks")
+        result_str = await tool.run(arguments={"scan_type": "nonexistent_type"})
+        result = json.loads(result_str)
 
-            tool = mcp._tool_manager.get_tool("screen_stocks")
-            await tool.run(arguments={"scan_type": "momentum"})
-
-        call_args = mock_run.call_args[0][0]
-        # Should have -o X:15:7 (NASDAQ=15, momentum suffix=7)
-        assert "-o" in call_args
-        o_idx = call_args.index("-o")
-        assert call_args[o_idx + 1].startswith("X:15:")
+        assert "error" in result
 
     @pytest.mark.asyncio
-    async def test_screen_stocks_no_dash_e_market(self) -> None:
-        """screen_stocks does NOT pass -e NASDAQ as args (old bug)."""
-        from mcp.server.fastmcp import FastMCP
-
-        from zaza.tools.screener.pkscreener import register
-
-        mcp = FastMCP("test")
-        register(mcp)
-
-        with patch(_PATCH_RUN, new_callable=AsyncMock) as mock_run:
-            mock_run.return_value = "Stock\tLTP\nAAPL\t195.0\n"
-
-            tool = mcp._tool_manager.get_tool("screen_stocks")
-            await tool.run(arguments={"scan_type": "breakout"})
-
-        call_args = mock_run.call_args[0][0]
-        # Should NOT contain "-e" followed by "NASDAQ"
-        for i, arg in enumerate(call_args):
-            if arg == "-e" and i + 1 < len(call_args):
-                assert call_args[i + 1] != "NASDAQ"
-
-    @pytest.mark.asyncio
-    async def test_screen_stocks_unsupported_market(self) -> None:
+    async def test_unsupported_market_returns_error(self) -> None:
         """Unsupported market returns error."""
         from mcp.server.fastmcp import FastMCP
 
-        from zaza.tools.screener.pkscreener import register
+        from zaza.tools.screener.screener import register
 
         mcp = FastMCP("test")
         register(mcp)
 
-        with patch(_PATCH_RUN, new_callable=AsyncMock) as mock_run:
-            tool = mcp._tool_manager.get_tool("screen_stocks")
-            result_str = await tool.run(
-                arguments={"scan_type": "breakout", "market": "UNKNOWN_MKT"}
-            )
-            result = json.loads(result_str)
+        tool = mcp._tool_manager.get_tool("screen_stocks")
+        result_str = await tool.run(
+            arguments={"scan_type": "breakout", "market": "UNKNOWN_MKT"}
+        )
+        result = json.loads(result_str)
 
         assert "error" in result
         assert "Unsupported market" in result["error"]
-        mock_run.assert_not_called()
 
     @pytest.mark.asyncio
-    async def test_screen_stocks_invalid_scan_type(self) -> None:
-        """Invalid scan type returns error without running Docker."""
+    async def test_empty_screen_results(self) -> None:
+        """Empty yf.screen response returns empty results list."""
         from mcp.server.fastmcp import FastMCP
 
-        from zaza.tools.screener.pkscreener import register
+        from zaza.tools.screener.screener import register
 
-        mcp = FastMCP("test")
-        register(mcp)
+        with (
+            patch("zaza.tools.screener.screener.yf") as mock_yf,
+            patch("zaza.tools.screener.screener.YFinanceClient") as MockYFClient,
+            patch("zaza.tools.screener.screener.FileCache") as MockCache,
+        ):
+            mock_yf.screen.return_value = {"quotes": [], "total": 0}
+            mock_client = MagicMock()
+            MockYFClient.return_value = mock_client
+            mock_cache = MagicMock()
+            mock_cache.get.return_value = None
+            mock_cache.make_key.return_value = "screen__NASDAQ__momentum"
+            MockCache.return_value = mock_cache
 
-        with patch(_PATCH_RUN, new_callable=AsyncMock) as mock_run:
+            mcp = FastMCP("test")
+            register(mcp)
+
             tool = mcp._tool_manager.get_tool("screen_stocks")
-            result_str = await tool.run(
-                arguments={"scan_type": "rm -rf /; injection"}
-            )
+            result_str = await tool.run(arguments={"scan_type": "momentum"})
             result = json.loads(result_str)
 
-        assert "error" in result
-        mock_run.assert_not_called()
+        assert "error" not in result
+        assert result["results"] == []
 
     @pytest.mark.asyncio
-    async def test_screen_stocks_command_injection_prevention(self) -> None:
-        """Scan type with shell metacharacters is rejected."""
+    async def test_yfinance_screen_error_handled(self) -> None:
+        """Exception from yf.screen is caught and returns error JSON."""
         from mcp.server.fastmcp import FastMCP
 
-        from zaza.tools.screener.pkscreener import register
+        from zaza.tools.screener.screener import register
 
-        mcp = FastMCP("test")
-        register(mcp)
+        with (
+            patch("zaza.tools.screener.screener.yf") as mock_yf,
+            patch("zaza.tools.screener.screener.YFinanceClient") as MockYFClient,
+            patch("zaza.tools.screener.screener.FileCache") as MockCache,
+        ):
+            mock_yf.screen.side_effect = Exception("API rate limit exceeded")
+            mock_client = MagicMock()
+            MockYFClient.return_value = mock_client
+            mock_cache = MagicMock()
+            mock_cache.get.return_value = None
+            mock_cache.make_key.return_value = "screen__NASDAQ__momentum"
+            MockCache.return_value = mock_cache
 
-        with patch(_PATCH_RUN, new_callable=AsyncMock) as mock_run:
-            tool = mcp._tool_manager.get_tool("screen_stocks")
-            result_str = await tool.run(
-                arguments={"scan_type": "breakout; rm -rf /"}
-            )
-            result = json.loads(result_str)
-
-        assert "error" in result
-        mock_run.assert_not_called()
-
-    @pytest.mark.asyncio
-    async def test_screen_stocks_docker_error(self) -> None:
-        """Docker exec error is handled gracefully."""
-        from mcp.server.fastmcp import FastMCP
-
-        from zaza.tools.screener.pkscreener import register
-
-        mcp = FastMCP("test")
-        register(mcp)
-
-        with patch(_PATCH_RUN, new_callable=AsyncMock) as mock_run:
-            mock_run.side_effect = RuntimeError(
-                "PKScreener error: container not found"
-            )
+            mcp = FastMCP("test")
+            register(mcp)
 
             tool = mcp._tool_manager.get_tool("screen_stocks")
-            result_str = await tool.run(
-                arguments={"scan_type": "breakout"}
-            )
+            result_str = await tool.run(arguments={"scan_type": "momentum"})
             result = json.loads(result_str)
 
         assert "error" in result
 
     @pytest.mark.asyncio
-    async def test_screen_stocks_nse_market_index(self) -> None:
-        """screen_stocks uses X:12: for NSE market."""
+    async def test_results_sorted_by_score_descending(self) -> None:
+        """Results are sorted by score in descending order."""
         from mcp.server.fastmcp import FastMCP
-        from zaza.tools.screener.pkscreener import register
+
+        from zaza.tools.screener.screener import register
 
         mcp = FastMCP("test")
         register(mcp)
 
-        with patch(_PATCH_RUN, new_callable=AsyncMock) as mock_run:
-            mock_run.return_value = "Stock\tLTP\nTCS\t3500.0\n"
-            tool = mcp._tool_manager.get_tool("screen_stocks")
-            await tool.run(arguments={"scan_type": "momentum", "market": "NSE"})
+        screen_resp = _make_screen_response(["AAPL", "MSFT", "GOOG", "TSLA", "AMZN"])
+        history_records = _make_history_records()
 
-        call_args = mock_run.call_args[0][0]
-        o_idx = call_args.index("-o")
-        assert call_args[o_idx + 1].startswith("X:12:")
+        with (
+            patch("zaza.tools.screener.screener.yf") as mock_yf,
+            patch("zaza.tools.screener.screener.YFinanceClient") as MockYFClient,
+        ):
+            mock_yf.screen.return_value = screen_resp
+            mock_client = MagicMock()
+            mock_client.get_history.return_value = history_records
+            MockYFClient.return_value = mock_client
+
+            tool = mcp._tool_manager.get_tool("screen_stocks")
+            result_str = await tool.run(arguments={"scan_type": "momentum"})
+            result = json.loads(result_str)
+
+        if result.get("results"):
+            scores = [r["score"] for r in result["results"]]
+            assert scores == sorted(scores, reverse=True)
 
     @pytest.mark.asyncio
-    async def test_screen_stocks_uses_scan_timeout(self) -> None:
-        """screen_stocks passes PKSCREENER_SCAN_TIMEOUT (600s) to run_pkscreener."""
+    async def test_all_nine_scan_types_accepted(self) -> None:
+        """All nine scan types are accepted without error."""
         from mcp.server.fastmcp import FastMCP
 
-        from zaza.config import PKSCREENER_SCAN_TIMEOUT
-        from zaza.tools.screener.pkscreener import register
+        from zaza.tools.screener.screener import register
 
         mcp = FastMCP("test")
         register(mcp)
 
-        with patch(_PATCH_RUN, new_callable=AsyncMock) as mock_run:
-            mock_run.return_value = "Stock\tLTP\nAAPL\t195.0\n"
-            tool = mcp._tool_manager.get_tool("screen_stocks")
-            await tool.run(arguments={"scan_type": "breakout"})
+        scan_types = [
+            "breakout", "momentum", "consolidation", "volume", "reversal",
+            "ipo", "short_squeeze", "bullish", "bearish",
+        ]
 
-        mock_run.assert_called_once()
-        call_kwargs = mock_run.call_args[1]
-        assert "timeout" in call_kwargs
-        assert call_kwargs["timeout"] == PKSCREENER_SCAN_TIMEOUT
+        screen_resp = _make_screen_response(["AAPL"])
+        history_records = _make_history_records()
+
+        for st in scan_types:
+            with (
+                patch("zaza.tools.screener.screener.yf") as mock_yf,
+                patch("zaza.tools.screener.screener.YFinanceClient") as MockYFClient,
+            ):
+                mock_yf.screen.return_value = screen_resp
+                mock_client = MagicMock()
+                mock_client.get_history.return_value = history_records
+                MockYFClient.return_value = mock_client
+
+                tool = mcp._tool_manager.get_tool("screen_stocks")
+                result_str = await tool.run(arguments={"scan_type": st})
+                result = json.loads(result_str)
+
+            assert "error" not in result, f"Scan type '{st}' returned error: {result}"
+
+    @pytest.mark.asyncio
+    async def test_cache_hit_returns_cached(self) -> None:
+        """When cache has results, yf.screen is not called."""
+        from mcp.server.fastmcp import FastMCP
+
+        from zaza.tools.screener.screener import register
+
+        cached_data = {
+            "scan_type": "breakout",
+            "market": "NASDAQ",
+            "total_results": 1,
+            "results": [{"symbol": "AAPL", "score": 85, "signals": ["test"]}],
+        }
+
+        with (
+            patch("zaza.tools.screener.screener.yf") as mock_yf,
+            patch("zaza.tools.screener.screener.YFinanceClient") as MockYFClient,
+            patch("zaza.tools.screener.screener.FileCache") as MockCache,
+        ):
+            mock_cache = MagicMock()
+            mock_cache.get.return_value = cached_data
+            mock_cache.make_key.return_value = "screen__NASDAQ__breakout"
+            MockCache.return_value = mock_cache
+
+            mock_client = MagicMock()
+            MockYFClient.return_value = mock_client
+
+            mcp = FastMCP("test")
+            register(mcp)
+
+            tool = mcp._tool_manager.get_tool("screen_stocks")
+            result_str = await tool.run(arguments={"scan_type": "breakout"})
+            result = json.loads(result_str)
+
+        # yf.screen should NOT have been called since cache returned data
+        mock_yf.screen.assert_not_called()
+        assert result["results"][0]["symbol"] == "AAPL"
+
+    @pytest.mark.asyncio
+    async def test_result_shape_has_required_fields(self) -> None:
+        """Each result item has symbol, score, and signals fields."""
+        from mcp.server.fastmcp import FastMCP
+
+        from zaza.tools.screener.screener import register
+
+        mcp = FastMCP("test")
+        register(mcp)
+
+        screen_resp = _make_screen_response(["AAPL", "MSFT"])
+        history_records = _make_history_records()
+
+        with (
+            patch("zaza.tools.screener.screener.yf") as mock_yf,
+            patch("zaza.tools.screener.screener.YFinanceClient") as MockYFClient,
+        ):
+            mock_yf.screen.return_value = screen_resp
+            mock_client = MagicMock()
+            mock_client.get_history.return_value = history_records
+            MockYFClient.return_value = mock_client
+
+            tool = mcp._tool_manager.get_tool("screen_stocks")
+            result_str = await tool.run(arguments={"scan_type": "breakout"})
+            result = json.loads(result_str)
+
+        for item in result["results"]:
+            assert "symbol" in item
+            assert "score" in item
+            assert "signals" in item
+            assert isinstance(item["score"], (int, float))
+            assert 0 <= item["score"] <= 100
+            assert isinstance(item["signals"], list)
 
 
 # ---------------------------------------------------------------------------
-# TASK-023b: get_screening_strategies
+# TestScreeningStrategies
 # ---------------------------------------------------------------------------
 
 class TestScreeningStrategies:
     """Tests for the get_screening_strategies tool."""
 
     @pytest.mark.asyncio
-    async def test_returns_strategy_list(self) -> None:
-        """Returns a list of available screening strategies."""
+    async def test_returns_nine_strategies(self) -> None:
+        """Returns exactly nine strategies."""
         from mcp.server.fastmcp import FastMCP
 
-        from zaza.tools.screener.pkscreener import register
+        from zaza.tools.screener.screener import register
 
         mcp = FastMCP("test")
         register(mcp)
@@ -443,17 +377,14 @@ class TestScreeningStrategies:
         result = json.loads(result_str)
 
         assert "strategies" in result
-        assert len(result["strategies"]) > 0
-        for s in result["strategies"]:
-            assert "name" in s
-            assert "description" in s
+        assert len(result["strategies"]) == 9
 
     @pytest.mark.asyncio
-    async def test_strategies_include_known_types(self) -> None:
-        """Strategy list includes the main scan types."""
+    async def test_strategy_shape_has_name_and_description(self) -> None:
+        """Each strategy has name and description fields."""
         from mcp.server.fastmcp import FastMCP
 
-        from zaza.tools.screener.pkscreener import register
+        from zaza.tools.screener.screener import register
 
         mcp = FastMCP("test")
         register(mcp)
@@ -462,170 +393,820 @@ class TestScreeningStrategies:
         result_str = await tool.run(arguments={})
         result = json.loads(result_str)
 
-        names = [s["name"] for s in result["strategies"]]
-        assert "breakout" in names
-        assert "momentum" in names
+        for s in result["strategies"]:
+            assert "name" in s
+            assert "description" in s
+            assert isinstance(s["name"], str)
+            assert isinstance(s["description"], str)
+            assert len(s["name"]) > 0
+            assert len(s["description"]) > 0
+
+    @pytest.mark.asyncio
+    async def test_known_strategies_present(self) -> None:
+        """All nine expected strategy names are present."""
+        from mcp.server.fastmcp import FastMCP
+
+        from zaza.tools.screener.screener import register
+
+        mcp = FastMCP("test")
+        register(mcp)
+
+        tool = mcp._tool_manager.get_tool("get_screening_strategies")
+        result_str = await tool.run(arguments={})
+        result = json.loads(result_str)
+
+        names = {s["name"] for s in result["strategies"]}
+        expected = {
+            "breakout", "momentum", "consolidation", "volume", "reversal",
+            "ipo", "short_squeeze", "bullish", "bearish",
+        }
+        assert names == expected
 
 
 # ---------------------------------------------------------------------------
-# TASK-023c: get_buy_sell_levels
+# TestBuySellLevels
 # ---------------------------------------------------------------------------
 
 class TestBuySellLevels:
     """Tests for the get_buy_sell_levels tool."""
 
     @pytest.mark.asyncio
-    async def test_buy_sell_levels_returns_data(self) -> None:
-        """Returns buy/sell levels for a ticker."""
+    async def test_valid_ticker_returns_levels(self) -> None:
+        """Valid ticker returns buy/sell levels."""
         from mcp.server.fastmcp import FastMCP
 
-        from zaza.tools.screener.pkscreener import register
+        from zaza.tools.screener.screener import register
 
         mcp = FastMCP("test")
         register(mcp)
 
-        mock_output = (
-            "Stock: AAPL\n"
-            "Buy Level: 190.5\n"
-            "Sell Level: 200.0\n"
-            "Support: 188.0\n"
-            "Resistance: 202.5\n"
-        )
+        history_records = _make_history_records()
 
-        with patch(_PATCH_RUN, new_callable=AsyncMock) as mock_run:
-            mock_run.return_value = mock_output
+        with patch("zaza.tools.screener.screener.YFinanceClient") as MockYFClient:
+            mock_client = MagicMock()
+            mock_client.get_history.return_value = history_records
+            MockYFClient.return_value = mock_client
 
             tool = mcp._tool_manager.get_tool("get_buy_sell_levels")
-            result_str = await tool.run(
-                arguments={"ticker": "AAPL"}
-            )
+            result_str = await tool.run(arguments={"ticker": "AAPL"})
             result = json.loads(result_str)
 
         assert "error" not in result
         assert "ticker" in result
+        assert result["ticker"] == "AAPL"
+        assert "pivot_points" in result
+        assert "fibonacci_levels" in result
+        assert "buy_zone" in result
+        assert "sell_zone" in result
 
     @pytest.mark.asyncio
-    async def test_buy_sell_levels_uses_stocklist(self) -> None:
-        """get_buy_sell_levels uses --stocklist instead of -e ticker."""
+    async def test_invalid_ticker_format_returns_error(self) -> None:
+        """Invalid ticker format returns error."""
         from mcp.server.fastmcp import FastMCP
 
-        from zaza.tools.screener.pkscreener import register
+        from zaza.tools.screener.screener import register
 
         mcp = FastMCP("test")
         register(mcp)
 
-        with patch(_PATCH_RUN, new_callable=AsyncMock) as mock_run:
-            mock_run.return_value = "Stock: AAPL\nBuy Level: 190.5\n"
+        tool = mcp._tool_manager.get_tool("get_buy_sell_levels")
+        result_str = await tool.run(arguments={"ticker": "INVALID!!!"})
+        result = json.loads(result_str)
 
-            tool = mcp._tool_manager.get_tool("get_buy_sell_levels")
-            await tool.run(arguments={"ticker": "AAPL"})
-
-        call_args = mock_run.call_args[0][0]
-        assert "--stocklist" in call_args
-        assert "AAPL" in call_args
+        assert "error" in result
 
     @pytest.mark.asyncio
-    async def test_buy_sell_levels_no_dash_e_ticker(self) -> None:
-        """get_buy_sell_levels does NOT pass -e TICKER (old bug)."""
+    async def test_unsupported_market_returns_error(self) -> None:
+        """Unsupported market returns error."""
         from mcp.server.fastmcp import FastMCP
 
-        from zaza.tools.screener.pkscreener import register
+        from zaza.tools.screener.screener import register
 
         mcp = FastMCP("test")
         register(mcp)
 
-        with patch(_PATCH_RUN, new_callable=AsyncMock) as mock_run:
-            mock_run.return_value = "Stock: AAPL\nBuy Level: 190.5\n"
+        tool = mcp._tool_manager.get_tool("get_buy_sell_levels")
+        result_str = await tool.run(
+            arguments={"ticker": "AAPL", "market": "UNKNOWN_MKT"}
+        )
+        result = json.loads(result_str)
 
-            tool = mcp._tool_manager.get_tool("get_buy_sell_levels")
-            await tool.run(arguments={"ticker": "AAPL"})
-
-        call_args = mock_run.call_args[0][0]
-        # Should NOT have -e followed by ticker
-        for i, arg in enumerate(call_args):
-            if arg == "-e" and i + 1 < len(call_args):
-                assert call_args[i + 1] != "AAPL"
+        assert "error" in result
+        assert "Unsupported market" in result["error"]
 
     @pytest.mark.asyncio
-    async def test_buy_sell_levels_correct_market_index(self) -> None:
-        """get_buy_sell_levels uses correct market index in -o flag."""
+    async def test_no_history_returns_error(self) -> None:
+        """Empty history data returns error."""
         from mcp.server.fastmcp import FastMCP
 
-        from zaza.tools.screener.pkscreener import register
+        from zaza.tools.screener.screener import register
 
-        mcp = FastMCP("test")
-        register(mcp)
+        with patch("zaza.tools.screener.screener.YFinanceClient") as MockYFClient:
+            mock_client = MagicMock()
+            mock_client.get_history.return_value = []
+            MockYFClient.return_value = mock_client
 
-        with patch(_PATCH_RUN, new_callable=AsyncMock) as mock_run:
-            mock_run.return_value = "Stock: AAPL\nBuy Level: 190.5\n"
-
-            tool = mcp._tool_manager.get_tool("get_buy_sell_levels")
-            await tool.run(arguments={"ticker": "AAPL"})
-
-        call_args = mock_run.call_args[0][0]
-        assert "-o" in call_args
-        o_idx = call_args.index("-o")
-        # NASDAQ = index 15, levels suffix = 0
-        assert call_args[o_idx + 1] == "X:15:0"
-
-    @pytest.mark.asyncio
-    async def test_buy_sell_levels_docker_error(self) -> None:
-        """Docker error handled gracefully."""
-        from mcp.server.fastmcp import FastMCP
-
-        from zaza.tools.screener.pkscreener import register
-
-        mcp = FastMCP("test")
-        register(mcp)
-
-        with patch(_PATCH_RUN, new_callable=AsyncMock) as mock_run:
-            mock_run.side_effect = RuntimeError(
-                "PKScreener error: timeout"
-            )
+            mcp = FastMCP("test")
+            register(mcp)
 
             tool = mcp._tool_manager.get_tool("get_buy_sell_levels")
-            result_str = await tool.run(
-                arguments={"ticker": "AAPL"}
-            )
+            result_str = await tool.run(arguments={"ticker": "AAPL"})
             result = json.loads(result_str)
 
         assert "error" in result
 
     @pytest.mark.asyncio
-    async def test_buy_sell_levels_nse_market(self) -> None:
-        """get_buy_sell_levels uses X:12:0 for NSE market."""
+    async def test_buy_below_sell(self) -> None:
+        """Buy zone max is below sell zone min."""
         from mcp.server.fastmcp import FastMCP
-        from zaza.tools.screener.pkscreener import register
 
-        mcp = FastMCP("test")
-        register(mcp)
+        from zaza.tools.screener.screener import register
 
-        with patch(_PATCH_RUN, new_callable=AsyncMock) as mock_run:
-            mock_run.return_value = "Stock: TCS\nBuy Level: 3400.0\n"
+        history_records = _make_history_records()
+
+        with (
+            patch("zaza.tools.screener.screener.YFinanceClient") as MockYFClient,
+            patch("zaza.tools.screener.screener.FileCache") as MockCache,
+        ):
+            mock_client = MagicMock()
+            mock_client.get_history.return_value = history_records
+            MockYFClient.return_value = mock_client
+            mock_cache = MagicMock()
+            MockCache.return_value = mock_cache
+
+            mcp = FastMCP("test")
+            register(mcp)
+
             tool = mcp._tool_manager.get_tool("get_buy_sell_levels")
-            await tool.run(arguments={"ticker": "TCS", "market": "NSE"})
+            result_str = await tool.run(arguments={"ticker": "AAPL"})
+            result = json.loads(result_str)
 
-        call_args = mock_run.call_args[0][0]
-        o_idx = call_args.index("-o")
-        assert call_args[o_idx + 1] == "X:12:0"
+        # Assert no error explicitly -- do not conditionally skip
+        assert "error" not in result, f"Unexpected error: {result.get('error')}"
+
+        buy_max = result["buy_zone"]["upper"]
+        sell_min = result["sell_zone"]["lower"]
+        assert buy_max <= sell_min, (
+            f"Buy zone upper ({buy_max}) should be <= sell zone lower ({sell_min})"
+        )
+
+
+# ---------------------------------------------------------------------------
+# TestScoringFunctions
+# ---------------------------------------------------------------------------
+
+class TestScoringFunctions:
+    """Tests for TA scoring functions in scan_types module."""
+
+    def test_momentum_scoring_returns_valid_score(self) -> None:
+        """Momentum scoring returns score 0-100 and signals list."""
+        from zaza.tools.screener.scan_types import SCAN_TYPES
+
+        df = _make_ohlcv_df()
+        quote = {
+            "regularMarketChangePercent": 3.0,
+            "averageDailyVolume3Month": 5_000_000,
+        }
+
+        config = SCAN_TYPES["momentum"]
+        result = config.score_candidate(df, quote)
+
+        assert "score" in result
+        assert "signals" in result
+        assert 0 <= result["score"] <= 100
+        assert isinstance(result["signals"], list)
+
+    def test_breakout_scoring_returns_valid_score(self) -> None:
+        """Breakout scoring returns score 0-100 and signals list."""
+        from zaza.tools.screener.scan_types import SCAN_TYPES
+
+        df = _make_ohlcv_df()
+        quote = {
+            "fiftyTwoWeekHigh": 110.0,
+            "fiftyTwoWeekLow": 90.0,
+            "fiftyTwoWeekChangePercent": 85.0,
+            "averageDailyVolume3Month": 5_000_000,
+        }
+
+        config = SCAN_TYPES["breakout"]
+        result = config.score_candidate(df, quote)
+
+        assert "score" in result
+        assert "signals" in result
+        assert 0 <= result["score"] <= 100
+        assert isinstance(result["signals"], list)
+
+    def test_score_capped_at_100(self) -> None:
+        """Score never exceeds 100 even with extreme inputs."""
+        from zaza.tools.screener.scan_types import SCAN_TYPES
+
+        # Create a DataFrame that would produce very high raw scores
+        np.random.seed(42)
+        n = 100
+        # Strong uptrend with high volume
+        close = np.linspace(80, 150, n)
+        high = close + 2.0
+        low = close - 0.5
+        open_ = close - 0.3
+        volume = np.full(n, 50_000_000.0)
+        df = pd.DataFrame({
+            "Open": open_,
+            "High": high,
+            "Low": low,
+            "Close": close,
+            "Volume": volume,
+        })
+
+        quote = {
+            "fiftyTwoWeekHigh": 151.0,
+            "fiftyTwoWeekLow": 70.0,
+            "fiftyTwoWeekChangePercent": 100.0,
+            "averageDailyVolume3Month": 50_000_000,
+            "regularMarketChangePercent": 10.0,
+            "short_percentage_of_shares_outstanding": {"value": 40.0},
+        }
+
+        for name, config in SCAN_TYPES.items():
+            result = config.score_candidate(df, quote)
+            assert result["score"] <= 100, (
+                f"Score for {name} was {result['score']}, expected <= 100"
+            )
+            assert result["score"] >= 0, (
+                f"Score for {name} was {result['score']}, expected >= 0"
+            )
+
+
+# ---------------------------------------------------------------------------
+# TestQueryBuilders
+# ---------------------------------------------------------------------------
+
+class TestQueryBuilders:
+    """Tests for EquityQuery builders in scan_types module."""
+
+    def test_all_nine_types_produce_equity_query(self) -> None:
+        """All nine scan types produce a valid EquityQuery."""
+        from yfinance import EquityQuery
+
+        from zaza.tools.screener.scan_types import SCAN_TYPES
+
+        for name, config in SCAN_TYPES.items():
+            query = config.build_query("NMS")
+            assert isinstance(query, EquityQuery), (
+                f"Scan type '{name}' did not produce an EquityQuery"
+            )
+            # Verify it can be serialized
+            d = query.to_dict()
+            assert "operator" in d
+            assert "operands" in d
+
+
+# ---------------------------------------------------------------------------
+# CR-1: SCREENER_TA_CONCURRENCY must be at least 1
+# ---------------------------------------------------------------------------
+
+class TestScreenerTAConcurrency:
+    """Tests for SCREENER_TA_CONCURRENCY minimum value guard."""
+
+    def test_concurrency_zero_env_var_is_clamped_to_one(
+        self, monkeypatch: pytest.MonkeyPatch,
+    ) -> None:
+        """SCREENER_TA_CONCURRENCY=0 via env must not produce 0 (deadlock)."""
+        monkeypatch.setenv("SCREENER_TA_CONCURRENCY", "0")
+        import zaza.config as config_module
+        importlib.reload(config_module)
+        assert config_module.SCREENER_TA_CONCURRENCY >= 1, (
+            "SCREENER_TA_CONCURRENCY=0 would cause asyncio.Semaphore(0) deadlock"
+        )
+        # Clean up
+        monkeypatch.delenv("SCREENER_TA_CONCURRENCY", raising=False)
+        importlib.reload(config_module)
+
+    def test_concurrency_negative_env_var_is_clamped_to_one(
+        self, monkeypatch: pytest.MonkeyPatch,
+    ) -> None:
+        """Negative SCREENER_TA_CONCURRENCY must be clamped to at least 1."""
+        monkeypatch.setenv("SCREENER_TA_CONCURRENCY", "-5")
+        import zaza.config as config_module
+        importlib.reload(config_module)
+        assert config_module.SCREENER_TA_CONCURRENCY >= 1
+        monkeypatch.delenv("SCREENER_TA_CONCURRENCY", raising=False)
+        importlib.reload(config_module)
+
+    def test_concurrency_valid_value_preserved(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        """Valid positive SCREENER_TA_CONCURRENCY is preserved as-is."""
+        monkeypatch.setenv("SCREENER_TA_CONCURRENCY", "5")
+        import zaza.config as config_module
+        importlib.reload(config_module)
+        assert config_module.SCREENER_TA_CONCURRENCY == 5
+        monkeypatch.delenv("SCREENER_TA_CONCURRENCY", raising=False)
+        importlib.reload(config_module)
+
+
+# ---------------------------------------------------------------------------
+# CR-2: _score_symbol and get_buy_sell_levels must use period="1y"
+# ---------------------------------------------------------------------------
+
+class TestPeriodIsOneYear:
+    """Verify that _score_symbol and get_buy_sell_levels fetch 1 year of data."""
 
     @pytest.mark.asyncio
-    async def test_buy_sell_levels_uses_ticker_timeout(self) -> None:
-        """get_buy_sell_levels passes PKSCREENER_TICKER_TIMEOUT (120s) to run_pkscreener."""
+    async def test_score_symbol_uses_one_year_period(self) -> None:
+        """_score_symbol must call get_history with period='1y' for golden cross."""
+        from zaza.tools.screener.screener import _score_symbol
+
+        mock_client = MagicMock()
+        mock_client.get_history.return_value = _make_history_records(250)
+        semaphore = asyncio.Semaphore(1)
+
+        def dummy_score(df: Any, quote: Any) -> dict[str, Any]:
+            return {"score": 50, "signals": []}
+
+        await _score_symbol(
+            mock_client, "AAPL", {"regularMarketPrice": 150.0}, dummy_score, semaphore
+        )
+
+        mock_client.get_history.assert_called_once_with("AAPL", period="1y")
+
+    @pytest.mark.asyncio
+    async def test_buy_sell_levels_uses_one_year_period(self) -> None:
+        """get_buy_sell_levels must call get_history with period='1y'."""
         from mcp.server.fastmcp import FastMCP
 
-        from zaza.config import PKSCREENER_TICKER_TIMEOUT
-        from zaza.tools.screener.pkscreener import register
+        from zaza.tools.screener.screener import register
 
-        mcp = FastMCP("test")
-        register(mcp)
+        history_records = _make_history_records(250)
 
-        with patch(_PATCH_RUN, new_callable=AsyncMock) as mock_run:
-            mock_run.return_value = "Stock: AAPL\nBuy Level: 190.5\n"
+        with (
+            patch("zaza.tools.screener.screener.YFinanceClient") as MockYFClient,
+            patch("zaza.tools.screener.screener.FileCache") as MockCache,
+        ):
+            mock_client = MagicMock()
+            mock_client.get_history.return_value = history_records
+            MockYFClient.return_value = mock_client
+            mock_cache = MagicMock()
+            MockCache.return_value = mock_cache
+
+            mcp = FastMCP("test")
+            register(mcp)
+
             tool = mcp._tool_manager.get_tool("get_buy_sell_levels")
             await tool.run(arguments={"ticker": "AAPL"})
 
-        mock_run.assert_called_once()
-        call_kwargs = mock_run.call_args[1]
-        assert "timeout" in call_kwargs
-        assert call_kwargs["timeout"] == PKSCREENER_TICKER_TIMEOUT
+        mock_client.get_history.assert_called_once_with("AAPL", period="1y")
+
+
+# ---------------------------------------------------------------------------
+# HR-1: Additional coverage for edge cases
+# ---------------------------------------------------------------------------
+
+class TestScoreSymbolEdgeCases:
+    """Tests for _score_symbol edge cases (short history, exceptions)."""
+
+    @pytest.mark.asyncio
+    async def test_score_symbol_short_history_returns_none(self) -> None:
+        """_score_symbol returns None when history has fewer than 20 records."""
+        from zaza.tools.screener.screener import _score_symbol
+
+        mock_client = MagicMock()
+        # Return only 10 records (< 20 threshold)
+        mock_client.get_history.return_value = _make_history_records(10)
+        semaphore = asyncio.Semaphore(1)
+
+        def dummy_score(df: Any, quote: Any) -> dict[str, Any]:
+            return {"score": 50, "signals": []}
+
+        result = await _score_symbol(
+            mock_client, "TINY", {"regularMarketPrice": 50.0}, dummy_score, semaphore
+        )
+        assert result is None, "Short history (<20) should return None"
+
+    @pytest.mark.asyncio
+    async def test_score_symbol_empty_history_returns_none(self) -> None:
+        """_score_symbol returns None when get_history returns empty list."""
+        from zaza.tools.screener.screener import _score_symbol
+
+        mock_client = MagicMock()
+        mock_client.get_history.return_value = []
+        semaphore = asyncio.Semaphore(1)
+
+        def dummy_score(df: Any, quote: Any) -> dict[str, Any]:
+            return {"score": 50, "signals": []}
+
+        result = await _score_symbol(
+            mock_client, "EMPTY", {}, dummy_score, semaphore
+        )
+        assert result is None
+
+    @pytest.mark.asyncio
+    async def test_score_symbol_exception_returns_none(self) -> None:
+        """_score_symbol returns None when an indicator computation raises."""
+        from zaza.tools.screener.screener import _score_symbol
+
+        mock_client = MagicMock()
+        mock_client.get_history.return_value = _make_history_records(100)
+        semaphore = asyncio.Semaphore(1)
+
+        def raising_score(df: Any, quote: Any) -> dict[str, Any]:
+            raise ValueError("indicator computation failed")
+
+        result = await _score_symbol(
+            mock_client, "ERR", {"regularMarketPrice": 100.0}, raising_score, semaphore
+        )
+        assert result is None, "Exception in score_fn should be caught, returning None"
+
+    @pytest.mark.asyncio
+    async def test_score_symbol_valid_returns_result(self) -> None:
+        """_score_symbol returns scored dict for valid data."""
+        from zaza.tools.screener.screener import _score_symbol
+
+        mock_client = MagicMock()
+        mock_client.get_history.return_value = _make_history_records(100)
+        semaphore = asyncio.Semaphore(1)
+
+        def dummy_score(df: Any, quote: Any) -> dict[str, Any]:
+            return {"score": 75, "signals": ["test_signal"]}
+
+        quote = {
+            "regularMarketPrice": 150.0,
+            "regularMarketChangePercent": 2.0,
+            "averageDailyVolume3Month": 1_000_000,
+        }
+        result = await _score_symbol(
+            mock_client, "GOOD", quote, dummy_score, semaphore,
+        )
+        assert result is not None
+        assert result["symbol"] == "GOOD"
+        assert result["score"] == 75
+        assert result["signals"] == ["test_signal"]
+
+
+class TestBuySellLevelsEdgeCases:
+    """Tests for get_buy_sell_levels edge cases."""
+
+    @pytest.mark.asyncio
+    async def test_insufficient_history_returns_error(self) -> None:
+        """get_buy_sell_levels returns error when df has fewer than 5 rows."""
+        from mcp.server.fastmcp import FastMCP
+
+        from zaza.tools.screener.screener import register
+
+        # Only 3 records -- below the len(df) < 5 threshold
+        short_records = _make_history_records(3)
+
+        with (
+            patch("zaza.tools.screener.screener.YFinanceClient") as MockYFClient,
+            patch("zaza.tools.screener.screener.FileCache") as MockCache,
+        ):
+            mock_client = MagicMock()
+            mock_client.get_history.return_value = short_records
+            MockYFClient.return_value = mock_client
+            mock_cache = MagicMock()
+            MockCache.return_value = mock_cache
+
+            mcp = FastMCP("test")
+            register(mcp)
+
+            tool = mcp._tool_manager.get_tool("get_buy_sell_levels")
+            result_str = await tool.run(arguments={"ticker": "SHORT"})
+            result = json.loads(result_str)
+
+        assert "error" in result
+        assert "Insufficient" in result["error"]
+
+
+# ---------------------------------------------------------------------------
+# HR-3: Fix conditional assert in test_buy_below_sell
+# ---------------------------------------------------------------------------
+
+class TestBuySellLevelsFixed:
+    """Fixed version of buy/sell zone tests without conditional asserts."""
+
+    @pytest.mark.asyncio
+    async def test_buy_zone_below_sell_zone_no_conditional(self) -> None:
+        """Buy zone upper must be <= sell zone lower, without conditional assert."""
+        from mcp.server.fastmcp import FastMCP
+
+        from zaza.tools.screener.screener import register
+
+        history_records = _make_history_records(100)
+
+        with (
+            patch("zaza.tools.screener.screener.YFinanceClient") as MockYFClient,
+            patch("zaza.tools.screener.screener.FileCache") as MockCache,
+        ):
+            mock_client = MagicMock()
+            mock_client.get_history.return_value = history_records
+            MockYFClient.return_value = mock_client
+            mock_cache = MagicMock()
+            MockCache.return_value = mock_cache
+
+            mcp = FastMCP("test")
+            register(mcp)
+
+            tool = mcp._tool_manager.get_tool("get_buy_sell_levels")
+            result_str = await tool.run(arguments={"ticker": "AAPL"})
+            result = json.loads(result_str)
+
+        # Assert no error -- do not conditionally skip
+        assert "error" not in result, f"Unexpected error: {result.get('error')}"
+
+        buy_max = result["buy_zone"]["upper"]
+        sell_min = result["sell_zone"]["lower"]
+        assert buy_max <= sell_min, (
+            f"Buy zone upper ({buy_max}) should be <= sell zone lower ({sell_min})"
+        )
+
+
+# ---------------------------------------------------------------------------
+# MR-4: Buy/sell zone midpoint adjustment must not invert zones
+# ---------------------------------------------------------------------------
+
+class TestBuySellZoneInversionProtection:
+    """Tests that buy/sell zone boundaries remain valid after midpoint adjustment."""
+
+    @pytest.mark.asyncio
+    async def test_buy_zone_lower_not_above_upper(self) -> None:
+        """Buy zone lower must be <= buy zone upper after all adjustments."""
+        from mcp.server.fastmcp import FastMCP
+
+        from zaza.tools.screener.screener import register
+
+        history_records = _make_history_records(100)
+
+        with (
+            patch("zaza.tools.screener.screener.YFinanceClient") as MockYFClient,
+            patch("zaza.tools.screener.screener.FileCache") as MockCache,
+        ):
+            mock_client = MagicMock()
+            mock_client.get_history.return_value = history_records
+            MockYFClient.return_value = mock_client
+            mock_cache = MagicMock()
+            MockCache.return_value = mock_cache
+
+            mcp = FastMCP("test")
+            register(mcp)
+
+            tool = mcp._tool_manager.get_tool("get_buy_sell_levels")
+            result_str = await tool.run(arguments={"ticker": "AAPL"})
+            result = json.loads(result_str)
+
+        assert "error" not in result, f"Unexpected error: {result.get('error')}"
+        buy = result["buy_zone"]
+        assert buy["lower"] <= buy["upper"], (
+            f"Buy zone inverted: lower={buy['lower']} > upper={buy['upper']}"
+        )
+
+    @pytest.mark.asyncio
+    async def test_sell_zone_lower_not_above_upper(self) -> None:
+        """Sell zone lower must be <= sell zone upper after all adjustments."""
+        from mcp.server.fastmcp import FastMCP
+
+        from zaza.tools.screener.screener import register
+
+        history_records = _make_history_records(100)
+
+        with (
+            patch("zaza.tools.screener.screener.YFinanceClient") as MockYFClient,
+            patch("zaza.tools.screener.screener.FileCache") as MockCache,
+        ):
+            mock_client = MagicMock()
+            mock_client.get_history.return_value = history_records
+            MockYFClient.return_value = mock_client
+            mock_cache = MagicMock()
+            MockCache.return_value = mock_cache
+
+            mcp = FastMCP("test")
+            register(mcp)
+
+            tool = mcp._tool_manager.get_tool("get_buy_sell_levels")
+            result_str = await tool.run(arguments={"ticker": "AAPL"})
+            result = json.loads(result_str)
+
+        assert "error" not in result, f"Unexpected error: {result.get('error')}"
+        sell = result["sell_zone"]
+        assert sell["lower"] <= sell["upper"], (
+            f"Sell zone inverted: lower={sell['lower']} > upper={sell['upper']}"
+        )
+
+
+# ---------------------------------------------------------------------------
+# LR-3: OBV logic in _score_volume and _score_bullish
+# ---------------------------------------------------------------------------
+
+class TestOBVScoringLogic:
+    """Tests verifying OBV trend scoring awards points for correct direction."""
+
+    def test_volume_scan_awards_points_for_rising_obv(self) -> None:
+        """_score_volume must award OBV points when obv_trend is 'rising', not 'falling'."""
+        from zaza.tools.screener.scan_types import SCAN_TYPES
+
+        # Build a strongly rising price/volume DataFrame so OBV trend = rising
+        n = 100
+        close = np.linspace(80, 150, n)
+        high = close + 1.0
+        low = close - 0.5
+        open_ = close - 0.3
+        volume = np.full(n, 5_000_000.0)
+        df = pd.DataFrame({
+            "Open": open_, "High": high, "Low": low, "Close": close, "Volume": volume,
+        })
+        quote: dict[str, Any] = {"averageDailyVolume3Month": 5_000_000}
+
+        config = SCAN_TYPES["volume"]
+        result = config.score_candidate(df, quote)
+
+        # With a strongly rising OBV and uniform volume (vol_ratio ~1),
+        # the OBV component should contribute its full 30 points
+        assert "obv_rising" in result["signals"], (
+            f"Volume scan should signal 'obv_rising' for uptrending data. "
+            f"Got signals: {result['signals']}"
+        )
+
+    def test_volume_scan_does_not_award_full_obv_for_falling(self) -> None:
+        """_score_volume should NOT give full OBV points for falling OBV trend."""
+        from zaza.tools.screener.scan_types import SCAN_TYPES
+
+        # Build a falling price DataFrame so OBV trend = falling
+        n = 100
+        close = np.linspace(150, 80, n)
+        high = close + 1.0
+        low = close - 0.5
+        open_ = close + 0.3
+        volume = np.full(n, 5_000_000.0)
+        df = pd.DataFrame({
+            "Open": open_, "High": high, "Low": low, "Close": close, "Volume": volume,
+        })
+        quote: dict[str, Any] = {"averageDailyVolume3Month": 5_000_000}
+
+        config = SCAN_TYPES["volume"]
+        result = config.score_candidate(df, quote)
+
+        # Should NOT have obv_rising signal for falling data
+        assert "obv_rising" not in result["signals"], (
+            f"Volume scan should NOT signal 'obv_rising' for downtrending data. "
+            f"Got signals: {result['signals']}"
+        )
+
+    def test_bullish_scan_awards_points_for_rising_obv(self) -> None:
+        """_score_bullish must award OBV points when obv_trend is 'rising'."""
+        from zaza.tools.screener.scan_types import SCAN_TYPES
+
+        n = 100
+        close = np.linspace(80, 150, n)
+        high = close + 1.0
+        low = close - 0.5
+        open_ = close - 0.3
+        volume = np.full(n, 5_000_000.0)
+        df = pd.DataFrame({
+            "Open": open_, "High": high, "Low": low, "Close": close, "Volume": volume,
+        })
+        quote: dict[str, Any] = {"averageDailyVolume3Month": 5_000_000}
+
+        config = SCAN_TYPES["bullish"]
+        result = config.score_candidate(df, quote)
+
+        assert "obv_rising" in result["signals"], (
+            f"Bullish scan should signal 'obv_rising' for uptrending data. "
+            f"Got signals: {result['signals']}"
+        )
+
+    def test_bullish_scan_does_not_award_full_obv_for_falling(self) -> None:
+        """_score_bullish should NOT give full OBV points for falling OBV."""
+        from zaza.tools.screener.scan_types import SCAN_TYPES
+
+        n = 100
+        close = np.linspace(150, 80, n)
+        high = close + 1.0
+        low = close - 0.5
+        open_ = close + 0.3
+        volume = np.full(n, 5_000_000.0)
+        df = pd.DataFrame({
+            "Open": open_, "High": high, "Low": low, "Close": close, "Volume": volume,
+        })
+        quote: dict[str, Any] = {"averageDailyVolume3Month": 5_000_000}
+
+        config = SCAN_TYPES["bullish"]
+        result = config.score_candidate(df, quote)
+
+        assert "obv_rising" not in result["signals"], (
+            f"Bullish scan should NOT signal 'obv_rising' for downtrending data. "
+            f"Got signals: {result['signals']}"
+        )
+
+
+# ---------------------------------------------------------------------------
+# HR-2: Tests must not write to real ~/.zaza/cache/
+# ---------------------------------------------------------------------------
+
+class TestFileCacheMocking:
+    """Verify that tests using register() do not write to real disk cache."""
+
+    @pytest.mark.asyncio
+    async def test_register_with_mocked_cache_does_not_touch_disk(self) -> None:
+        """register() must use the mocked FileCache, not create real cache files."""
+        from mcp.server.fastmcp import FastMCP
+
+        with (
+            patch("zaza.tools.screener.screener.FileCache") as MockCache,
+            patch("zaza.tools.screener.screener.YFinanceClient") as MockYFClient,
+        ):
+            mock_cache = MagicMock()
+            MockCache.return_value = mock_cache
+            mock_client = MagicMock()
+            MockYFClient.return_value = mock_client
+
+            mcp = FastMCP("test")
+            from zaza.tools.screener.screener import register
+            register(mcp)
+
+        # FileCache was called exactly once (in register)
+        MockCache.assert_called_once()
+
+
+# ---------------------------------------------------------------------------
+# Additional scoring branch coverage (HR-1)
+# ---------------------------------------------------------------------------
+
+class TestScoringBranchCoverage:
+    """Additional tests for scoring function branch coverage."""
+
+    def test_consolidation_scoring(self) -> None:
+        """Consolidation scoring returns valid score."""
+        from zaza.tools.screener.scan_types import SCAN_TYPES
+
+        df = _make_ohlcv_df()
+        quote: dict[str, Any] = {"regularMarketChangePercent": 0.1}
+        config = SCAN_TYPES["consolidation"]
+        result = config.score_candidate(df, quote)
+        assert 0 <= result["score"] <= 100
+        assert isinstance(result["signals"], list)
+
+    def test_reversal_scoring(self) -> None:
+        """Reversal scoring returns valid score."""
+        from zaza.tools.screener.scan_types import SCAN_TYPES
+
+        df = _make_ohlcv_df()
+        quote: dict[str, Any] = {"regularMarketChangePercent": -5.0}
+        config = SCAN_TYPES["reversal"]
+        result = config.score_candidate(df, quote)
+        assert 0 <= result["score"] <= 100
+        assert isinstance(result["signals"], list)
+
+    def test_ipo_scoring(self) -> None:
+        """IPO scoring returns valid score."""
+        from zaza.tools.screener.scan_types import SCAN_TYPES
+
+        df = _make_ohlcv_df(25)  # Short history for IPO
+        quote: dict[str, Any] = {"regularMarketChangePercent": 3.0}
+        config = SCAN_TYPES["ipo"]
+        result = config.score_candidate(df, quote)
+        assert 0 <= result["score"] <= 100
+        assert isinstance(result["signals"], list)
+        # Short IPO history should produce the "very_recent_ipo" signal
+        assert "very_recent_ipo" in result["signals"]
+
+    def test_short_squeeze_scoring(self) -> None:
+        """Short squeeze scoring returns valid score with high short %."""
+        from zaza.tools.screener.scan_types import SCAN_TYPES
+
+        df = _make_ohlcv_df()
+        quote: dict[str, Any] = {
+            "short_percentage_of_shares_outstanding": {"value": 35.0},
+        }
+        config = SCAN_TYPES["short_squeeze"]
+        result = config.score_candidate(df, quote)
+        assert 0 <= result["score"] <= 100
+        assert isinstance(result["signals"], list)
+
+    def test_bearish_scoring(self) -> None:
+        """Bearish scoring returns valid score."""
+        from zaza.tools.screener.scan_types import SCAN_TYPES
+
+        df = _make_ohlcv_df()
+        quote: dict[str, Any] = {"regularMarketChangePercent": -3.0}
+        config = SCAN_TYPES["bearish"]
+        result = config.score_candidate(df, quote)
+        assert 0 <= result["score"] <= 100
+        assert isinstance(result["signals"], list)
+
+    def test_volume_scoring(self) -> None:
+        """Volume scoring returns valid score."""
+        from zaza.tools.screener.scan_types import SCAN_TYPES
+
+        df = _make_ohlcv_df()
+        quote: dict[str, Any] = {"averageDailyVolume3Month": 5_000_000}
+        config = SCAN_TYPES["volume"]
+        result = config.score_candidate(df, quote)
+        assert 0 <= result["score"] <= 100
+        assert isinstance(result["signals"], list)
+
+    def test_bullish_scoring(self) -> None:
+        """Bullish scoring returns valid score."""
+        from zaza.tools.screener.scan_types import SCAN_TYPES
+
+        df = _make_ohlcv_df()
+        quote: dict[str, Any] = {"regularMarketChangePercent": 3.0}
+        config = SCAN_TYPES["bullish"]
+        result = config.score_candidate(df, quote)
+        assert 0 <= result["score"] <= 100
+        assert isinstance(result["signals"], list)
