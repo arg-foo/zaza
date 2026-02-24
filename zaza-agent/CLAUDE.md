@@ -91,6 +91,13 @@
   <tool name="browser_act"              query="click, type, press, scroll" />
   <tool name="browser_read_text"        query="extract full page text" />
   <tool name="browser_close"            query="close browser, free resources" />
+
+  <!-- Trades (5) -->
+  <tool name="save_trade_plan"           query="validate and save new trade plan XML" />
+  <tool name="get_trade_plan"            query="retrieve trade plan by ID" />
+  <tool name="list_trade_plans"          query="list active/archived trade plans" />
+  <tool name="update_trade_plan"         query="validate and overwrite trade plan XML" />
+  <tool name="close_trade_plan"          query="archive a completed/cancelled trade plan" />
 </tools>
 
 <!-- ================================================================ -->
@@ -377,7 +384,209 @@
         Include a portfolio-after summary showing new allocation percentages.
       </output>
       <constraint>Only recommend trades where Expected Value justifies the risk. "No trade" is always a valid option. Never force entries to use up cash.</constraint>
+      <persistence>
+        After generating each trade-plan XML block:
+        1. Call save_trade_plan(xml="&lt;trade-plan ...&gt;...&lt;/trade-plan&gt;") to persist the plan. Note the returned plan_id.
+        2. When a broker order is placed and returns an order_id:
+           a. Call get_trade_plan(plan_id) to retrieve the current XML
+           b. Update the &lt;order_id&gt; field(s) in the XML with the actual broker order_id
+           c. Call update_trade_plan(plan_id, xml) to persist the update
+        3. When a trade is closed (stop hit, target hit, or manual exit):
+           a. Call close_trade_plan(plan_id, reason="target_hit|stop_hit|manual_exit|cancelled")
+      </persistence>
     </step>
+
+    <!-- ============================================================ -->
+    <!-- TRADE PLAN OUTPUT FORMAT                                     -->
+    <!-- Step 3 MUST produce its final output in this XML structure.  -->
+    <!-- Each <trade> contains a complete entry/exit strategy with    -->
+    <!-- corresponding limit orders and tracking IDs.                 -->
+    <!-- ============================================================ -->
+
+    <trade-plan-format>
+      <description>
+        After Step 3 generates rebalancing orders, present the final trade plan
+        using this XML structure. Every trade must have a unique order_id, a fully
+        specified entry strategy, and a fully specified exit strategy with limit
+        orders for stop-loss and take-profit.
+      </description>
+
+      <template>
+        <!--
+          Copy this structure for each trade. Replace bracketed values.
+          order_id is returned when making actual orders.
+        -->
+
+        <trade-plan ticker="{TICKER}" generated="{YYYY-MM-DD HH:MM UTC}">
+
+          <summary>
+            <side>{BUY|SELL}</side>
+            <ticker>{TICKER}</ticker>
+            <quantity>{shares}</quantity>
+            <conviction>{HIGH|MEDIUM|LOW}</conviction>
+            <expected_value>{+X.XX%}</expected_value>
+            <risk_reward_ratio>{R:R e.g. 1:2.5}</risk_reward_ratio>
+            <rationale>{1-2 sentence justification from Phase 2-4 analysis}</rationale>
+          </summary>
+
+          <entry>
+            <strategy>{breakout_buy|pullback_buy|momentum_entry|mean_reversion|gap_fill|support_bounce|exit_position|trim_position}</strategy>
+            <trigger>{Specific condition, e.g. "Price crosses above $185.50 with volume &gt; 1.5x avg"}</trigger>
+
+            <limit-order>
+              <order_id>SOME_ORDER_ID</order_id>
+              <type>LIMIT</type>
+              <side>{BUY|SELL}</side>
+              <ticker>{TICKER}</ticker>
+              <quantity>{shares}</quantity>
+              <limit_price>{price}</limit_price>
+              <time_in_force>{DAY|GTC}</time_in_force>
+              <notes>{Why this price level: S/R, VWAP, Fib, etc.}</notes>
+            </limit-order>
+          </entry>
+
+          <exit>
+
+            <stop-loss>
+              <strategy>{hard_stop|trailing_stop|break_even_stop}</strategy>
+              <trigger>{e.g. "Price closes below $178.20 (below 20-day SMA + ATR buffer)"}</trigger>
+              <risk_pct>{max portfolio loss % on this trade}</risk_pct>
+
+              <limit-order>
+                <order_id>SOME_ORDER_ID</order_id>
+                <type>STOP_LIMIT</type>
+                <side>{opposite of entry side}</side>
+                <ticker>{TICKER}</ticker>
+                <quantity>{shares}</quantity>
+                <stop_price>{trigger price}</stop_price>
+                <limit_price>{limit price, slightly beyond stop for fill}</limit_price>
+                <time_in_force>GTC</time_in_force>
+                <notes>{Technical basis: support level, ATR multiple, etc.}</notes>
+              </limit-order>
+            </stop-loss>
+
+            <take-profit>
+              <strategy>{target_exit|scaled_exit|trailing_target}</strategy>
+              <trigger>{e.g. "Price reaches $198.00 (Fibonacci 1.618 extension)"}</trigger>
+              <reward_pct>{expected gain % on this trade}</reward_pct>
+
+              <limit-order>
+                <order_id>SOME_ORDER_ID</order_id>
+                <type>LIMIT</type>
+                <side>{opposite of entry side}</side>
+                <ticker>{TICKER}</ticker>
+                <quantity>{shares}</quantity>
+                <limit_price>{target price}</limit_price>
+                <time_in_force>GTC</time_in_force>
+                <notes>{Technical basis: resistance, Fib extension, analyst target, etc.}</notes>
+              </limit-order>
+            </take-profit>
+
+            <!-- Optional: partial take-profit for scaled exits -->
+            <!--
+            <partial-take-profit>
+              <trigger>{e.g. "At $192.00, sell 50% and trail stop to break-even"}</trigger>
+              <limit-order>
+                <order_id>SOME_ORDER_ID</order_id>
+                <type>LIMIT</type>
+                <side>{opposite of entry side}</side>
+                <ticker>{TICKER}</ticker>
+                <quantity>{partial shares}</quantity>
+                <limit_price>{intermediate target}</limit_price>
+                <time_in_force>GTC</time_in_force>
+                <notes>{Reason for partial: de-risk, lock gains, etc.}</notes>
+              </limit-order>
+            </partial-take-profit>
+            -->
+
+            <time_exit>{e.g. "Close position EOD Friday if neither stop nor target hit"}</time_exit>
+
+          </exit>
+
+        </trade-plan>
+      </template>
+
+      <example>
+        <trade-plan ticker="AAPL" generated="2026-02-24 14:30 UTC">
+          <summary>
+            <side>BUY</side>
+            <ticker>AAPL</ticker>
+            <quantity>50</quantity>
+            <conviction>HIGH</conviction>
+            <expected_value>+3.8%</expected_value>
+            <risk_reward_ratio>1:2.5</risk_reward_ratio>
+            <rationale>RSI bouncing off 38 with bullish MACD crossover at 20-day SMA support. Options flow shows heavy call buying at $185 strike. Backtest win rate 68%.</rationale>
+          </summary>
+
+          <entry>
+            <strategy>support_bounce</strategy>
+            <trigger>Price holds above $183.50 (20-day SMA) with RSI &gt; 40 and MACD histogram turning positive</trigger>
+
+            <limit-order>
+              <order_id>281635863513651</order_id>
+              <type>LIMIT</type>
+              <side>BUY</side>
+              <ticker>AAPL</ticker>
+              <quantity>50</quantity>
+              <limit_price>184.00</limit_price>
+              <time_in_force>DAY</time_in_force>
+              <notes>Entry at 20-day SMA ($183.50) + $0.50 buffer for confirmation</notes>
+            </limit-order>
+          </entry>
+
+          <exit>
+            <stop-loss>
+              <strategy>hard_stop</strategy>
+              <trigger>Price closes below $179.80 (below 50-day SMA and 1.5x ATR below entry)</trigger>
+              <risk_pct>2.3%</risk_pct>
+
+              <limit-order>
+                <order_id>281635863513835</order_id>
+                <type>STOP_LIMIT</type>
+                <side>SELL</side>
+                <ticker>AAPL</ticker>
+                <quantity>50</quantity>
+                <stop_price>179.80</stop_price>
+                <limit_price>179.50</limit_price>
+                <time_in_force>GTC</time_in_force>
+                <notes>Below 50-day SMA ($180.20) invalidates support bounce thesis</notes>
+              </limit-order>
+            </stop-loss>
+
+            <take-profit>
+              <strategy>target_exit</strategy>
+              <trigger>Price reaches $194.50 (Fibonacci 1.618 extension from recent swing)</trigger>
+              <reward_pct>5.7%</reward_pct>
+
+              <limit-order>
+                <order_id>281612463513651</order_id>
+                <type>LIMIT</type>
+                <side>SELL</side>
+                <ticker>AAPL</ticker>
+                <quantity>50</quantity>
+                <limit_price>194.50</limit_price>
+                <time_in_force>GTC</time_in_force>
+                <notes>Fib 1.618 extension aligns with prior resistance zone $193-195</notes>
+              </limit-order>
+            </take-profit>
+
+            <time_exit>If neither stop nor target hit within 5 trading days, re-evaluate at market close Friday.</time_exit>
+          </exit>
+        </trade-plan>
+      </example>
+
+      <rules>
+        <rule>Every trade MUST have exactly one entry limit-order, one stop-loss limit-order, and one take-profit limit-order at minimum.</rule>
+        <rule>order_id MUST be unique across the entire trade plan. Format: {SIDE}-{TICKER}-{YYYYMMDD}-{SEQ} with suffixes -SL, -TP, -PT for exit orders.</rule>
+        <rule>stop_price and limit_price on stop-loss orders MUST differ (limit slightly beyond stop for fill in fast markets).</rule>
+        <rule>risk_pct on stop-loss should not exceed 3% of total portfolio value per trade.</rule>
+        <rule>risk_reward_ratio must be at least 1:1.5 -- do not enter trades with unfavorable R:R.</rule>
+        <rule>time_in_force defaults to GTC for exit orders and DAY for entry orders unless specifically justified.</rule>
+        <rule>All prices must come from Phase 2-4 analysis (TA levels, Fib, S/R, VWAP) -- never arbitrary round numbers.</rule>
+        <rule>Include the portfolio-after summary (from Step 3 output spec) AFTER all trade-plan blocks.</rule>
+      </rules>
+
+    </trade-plan-format>
 
   </portfolio-management-flow>
 

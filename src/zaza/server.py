@@ -1,7 +1,7 @@
 """Zaza MCP server entry point.
 
 Communicates with Claude Code over stdin/stdout using the MCP protocol.
-Registers all 66 financial research tools organized across 11 domains.
+Registers all 71 financial research tools organized across 12 domains.
 """
 
 from __future__ import annotations
@@ -52,13 +52,14 @@ TOOL_DOMAINS: list[tuple[str, str, str]] = [
     ("backtesting", "zaza.tools.backtesting", "register_backtesting_tools"),
     ("screener", "zaza.tools.screener", "register_screener_tools"),
     ("browser", "zaza.tools.browser", "register_browser_tools"),
+    ("trades", "zaza.tools.trades", "register_trades_tools"),
 ]
 
 
 def register_all_tools(mcp: object) -> int:
     """Register all tool domains with the MCP server.
 
-    Iterates through all 11 domain modules, importing and calling each
+    Iterates through all 12 domain modules, importing and calling each
     registration function. If a domain fails to register, the error is
     logged and registration continues with remaining domains.
 

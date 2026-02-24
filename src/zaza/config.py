@@ -8,6 +8,11 @@ from pathlib import Path
 CACHE_DIR = Path(os.getenv("ZAZA_CACHE_DIR", str(Path.home() / ".zaza" / "cache")))
 PREDICTIONS_DIR = CACHE_DIR / "predictions"
 
+# Trade plan directories
+TRADES_DIR = Path(os.getenv("ZAZA_TRADES_DIR", str(Path.home() / ".zaza" / "trades")))
+TRADES_ACTIVE_DIR = TRADES_DIR / "active"
+TRADES_ARCHIVE_DIR = TRADES_DIR / "archive"
+
 # Screener configuration
 SCREENER_DEFAULT_MARKET = os.getenv("SCREENER_DEFAULT_MARKET", "NASDAQ")
 SCREENER_PAGE_SIZE = 250  # yfinance max per request
@@ -57,7 +62,12 @@ CACHE_TTL: dict[str, int] = {
 
 
 def _ensure_dirs() -> None:
-    """Create cache directories if they don't exist."""
+    """Create cache directories if they don't exist.
+
+    Note: Trade plan directories (TRADES_ACTIVE_DIR, TRADES_ARCHIVE_DIR)
+    are created by TradeXmlStore.__init__ to avoid side effects during
+    test imports (CR-10).
+    """
     CACHE_DIR.mkdir(parents=True, exist_ok=True)
     PREDICTIONS_DIR.mkdir(parents=True, exist_ok=True)
 
