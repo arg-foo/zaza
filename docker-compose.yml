@@ -17,7 +17,12 @@ services:
     volumes:
       # Persistent cache across container restarts (SQLite-backed diskcache)
       - zaza-cache:/cache
+      # Persistent trade plans across container restarts
+      - zaza-trades:/trades
+    environment:
+      - ZAZA_TRADES_DIR=/trades
     env_file: .env                # REDDIT_CLIENT_ID, FRED_API_KEY, etc.
 
 volumes:
   zaza-cache:
+  zaza-trades:
