@@ -26,14 +26,14 @@ class TestRegisterAllTools:
         assert callable(register_all_tools)
 
     def test_register_all_tools_registers_all_domains(self) -> None:
-        """register_all_tools should register all 11 domain modules."""
+        """register_all_tools should register all 12 domain modules."""
         from mcp.server.fastmcp import FastMCP
 
         from zaza.server import register_all_tools
 
         mcp = FastMCP("test")
         result = register_all_tools(mcp)
-        assert result == 11
+        assert result == 12
 
     def test_register_all_tools_resilient_to_single_failure(self) -> None:
         """If one domain fails to register, others should still succeed."""
@@ -54,8 +54,8 @@ class TestRegisterAllTools:
         with patch.object(importlib, "import_module", side_effect=selective_fail):
             result = register_all_tools(mcp)
 
-        # 10 out of 11 should succeed
-        assert result == 10
+        # 11 out of 12 should succeed
+        assert result == 11
 
     def test_register_all_tools_returns_zero_on_all_failures(self) -> None:
         """If all domains fail, register_all_tools returns 0."""
@@ -83,11 +83,11 @@ class TestRegisterAllTools:
         with patch("zaza.server.logger") as mock_logger:
             register_all_tools(mcp)
 
-        # Should have 11 domain_registered info calls + 1 completion call
+        # Should have 12 domain_registered info calls + 1 completion call
         info_calls = [
             c for c in mock_logger.info.call_args_list if "domain_registered" in str(c)
         ]
-        assert len(info_calls) == 11
+        assert len(info_calls) == 12
 
     def test_register_all_tools_logs_completion(self) -> None:
         """register_all_tools should log a completion summary."""
@@ -128,7 +128,7 @@ class TestRegisterAllTools:
             for c in mock_logger.error.call_args_list
             if "domain_registration_failed" in str(c)
         ]
-        assert len(error_calls) == 11
+        assert len(error_calls) == 12
 
     def test_register_all_tools_partial_failure_logs_both(self) -> None:
         """When some domains fail, both successes and failures should be logged."""
@@ -151,7 +151,7 @@ class TestRegisterAllTools:
         ):
             result = register_all_tools(mcp)
 
-        assert result == 9
+        assert result == 10
 
         info_calls = [
             c for c in mock_logger.info.call_args_list if "domain_registered" in str(c)
@@ -161,7 +161,7 @@ class TestRegisterAllTools:
             for c in mock_logger.error.call_args_list
             if "domain_registration_failed" in str(c)
         ]
-        assert len(info_calls) == 9
+        assert len(info_calls) == 10
         assert len(error_calls) == 2
 
 
@@ -312,11 +312,11 @@ class TestOptionalClientLogging:
 class TestToolDomains:
     """Tests for the TOOL_DOMAINS registry constant."""
 
-    def test_tool_domains_has_11_entries(self) -> None:
-        """TOOL_DOMAINS should have exactly 11 domain entries."""
+    def test_tool_domains_has_12_entries(self) -> None:
+        """TOOL_DOMAINS should have exactly 12 domain entries."""
         from zaza.server import TOOL_DOMAINS
 
-        assert len(TOOL_DOMAINS) == 11
+        assert len(TOOL_DOMAINS) == 12
 
     def test_tool_domains_entries_are_valid_tuples(self) -> None:
         """Each entry should be a (name, module_path, func_name) tuple."""

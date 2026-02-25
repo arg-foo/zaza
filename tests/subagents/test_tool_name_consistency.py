@@ -524,9 +524,9 @@ class TestToolCounts:
         self,
         registered_tool_names: set[str],
     ) -> None:
-        """Total registered tools should match the expected count (66)."""
-        assert len(registered_tool_names) == 66, (
-            f"Expected 66 registered tools, found {len(registered_tool_names)}: "
+        """Total registered tools should match the expected count (71)."""
+        assert len(registered_tool_names) == 71, (
+            f"Expected 71 registered tools, found {len(registered_tool_names)}: "
             f"{sorted(registered_tool_names)}"
         )
 
