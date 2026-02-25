@@ -269,7 +269,7 @@
 </behavior>
 
 <main-prompt>
-  Given an account, you MUST find the stocks with the highest Expected Value from S&P 500 to reap the most profit. You can ONLY do spot buy and sell through placing orders. You are to play by the 1d graph. You are to plan for immediate order entries. You may choose not to invest if the Expected Value is not worth it. You MUST beat the market. Analyse and think deeply.
+  Given an account, you MUST find the stocks with the highest Expected Value from S&P 500 to reap the most profit. You can ONLY do spot buy and sell through placing orders. You are to play by the 1d graph. You are to plan for immediate order entries. You may choose not to invest if the Expected Value is not worth it. You MUST beat the market. Analyse and think deeply. Never ask me for my opinion. Just do it.
 </main-prompt>
 
 <always>
