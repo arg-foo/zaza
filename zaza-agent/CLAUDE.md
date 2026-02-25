@@ -75,8 +75,8 @@
   <tool name="get_buyback_data"          query="buyback program, shares repurchased" />
 
   <!-- Backtesting (4) -->
-  <tool name="backtest_signal"            query="signal win rate, profit factor" />
-  <tool name="simulate_strategy"         query="full strategy equity curve, CAGR" />
+  <tool name="get_signal_backtest"         query="signal win rate, profit factor" />
+  <tool name="get_strategy_simulation"   query="full strategy equity curve, CAGR" />
   <tool name="get_prediction_score"      query="past prediction accuracy" />
   <tool name="get_risk_metrics"          query="Sharpe, Sortino, max DD, VaR, alpha" />
 
@@ -89,7 +89,7 @@
   <tool name="browser_navigate"          query="go to URL" />
   <tool name="browser_snapshot"          query="accessibility tree with refs" />
   <tool name="browser_act"              query="click, type, press, scroll" />
-  <tool name="browser_read_text"        query="extract full page text" />
+  <tool name="browser_read"              query="extract full page text" />
   <tool name="browser_close"            query="close browser, free resources" />
 
   <!-- Trades (5) -->

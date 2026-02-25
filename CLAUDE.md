@@ -213,19 +213,6 @@ Zaza is a financial research MCP server (66 tools, 11 domains) that extends Clau
   rtk docker logs <c>     # Deduplicated logs
   ```
 
-  ### Python Tooling
-  ```bash
-  rtk uv sync             # Compact dependency sync output
-  rtk uv sync --dev       # Works with all uv sync flags
-  rtk uv run pytest       # Pytest failures only (90%)
-  rtk uv run pytest -x    # Works with all pytest flags
-  rtk uv run ruff check   # Ruff lint violations grouped (80%)
-  rtk uv run ruff format  # Ruff format output compact (70%)
-  rtk uv run uvicorn      # Compact server startup output
-  rtk uv pip list         # Compact package list
-  rtk uv pip install      # Compact install output
-  ```
-
   ### Network
   ```bash
   rtk curl <url>          # Compact HTTP responses (70%)

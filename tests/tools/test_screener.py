@@ -289,9 +289,6 @@ class TestScreenStocks:
 
         from zaza.tools.screener.screener import register
 
-        mcp = FastMCP("test")
-        register(mcp)
-
         # Simulate 3 pages: 250 + 250 + 100 = 600 total candidates
         page1 = [{"symbol": f"SYM{i}", "regularMarketPrice": 100.0,
                    "regularMarketChangePercent": 1.0,
@@ -320,6 +317,9 @@ class TestScreenStocks:
             mock_client = MagicMock()
             mock_client.get_history.return_value = history_records
             MockYFClient.return_value = mock_client
+
+            mcp = FastMCP("test")
+            register(mcp)
 
             tool = mcp._tool_manager.get_tool("screen_stocks")
             result_str = await tool.run(arguments={"scan_type": "momentum"})
