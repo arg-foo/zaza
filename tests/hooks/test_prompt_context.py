@@ -11,7 +11,9 @@ from pathlib import Path
 from xml.etree import ElementTree as ET  # noqa: F401
 
 # Add the hook script directory to sys.path so we can import it
-_HOOK_DIR = str(Path(__file__).resolve().parent.parent.parent / ".claude" / "hooks")
+_HOOK_DIR = str(
+    Path(__file__).resolve().parent.parent.parent / "zaza-agent" / ".claude" / "hooks"
+)
 if _HOOK_DIR not in sys.path:
     sys.path.insert(0, _HOOK_DIR)
 
