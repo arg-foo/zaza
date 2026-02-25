@@ -1,0 +1,3 @@
+[submodule "tiger-brokers-cash-mcp"]
+	path = tiger-brokers-cash-mcp
+	url = git@github.com:arg-foo/tiger-brokers-cash-mcp.git
