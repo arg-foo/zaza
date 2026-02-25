@@ -98,6 +98,11 @@
   <tool name="list_trade_plans"          query="list active/archived trade plans" />
   <tool name="update_trade_plan"         query="validate and overwrite trade plan XML" />
   <tool name="close_trade_plan"          query="archive a completed/cancelled trade plan" />
+
+  <!-- Tiger Brokers (12) — mcp__tiger__tool_name -->
+  <!-- Cash account trading: orders, positions, account data -->
+  <external-tools src="ext/tiger-brokers.md" server="tiger" count="12" />
+
 </tools>
 
 <!-- ================================================================ -->
