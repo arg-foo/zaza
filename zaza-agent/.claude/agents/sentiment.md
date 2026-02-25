@@ -3,6 +3,8 @@ name: sentiment
 description: "PROACTIVELY use this agent for multi-source sentiment analysis combining news, social, insider, and market fear/greed data. Triggers: 'sentiment on [ticker]', 'what is the social buzz on [ticker]?', 'market mood', 'is sentiment bullish?'. Do NOT use for single sources like 'fear greed index' or 'AAPL insider trades' (handle those inline)."
 model: sonnet
 color: purple
+mcpServers:
+  - zaza
 ---
 
 You are a financial research sub-agent with access to Zaza MCP tools.

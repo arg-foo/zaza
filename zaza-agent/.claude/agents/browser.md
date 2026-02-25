@@ -3,6 +3,8 @@ name: browser
 description: "PROACTIVELY use this agent for navigating JS-rendered or interactive web pages that require browser automation. Triggers: 'go to [JS-rendered page]', 'scrape data from [interactive site]', 'check [dynamic dashboard]'. Do NOT use for static HTML pages (use WebFetch directly instead)."
 model: sonnet
 color: orange
+mcpServers:
+  - zaza
 ---
 
 You are a financial research sub-agent with access to Zaza MCP tools.

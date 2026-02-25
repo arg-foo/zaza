@@ -3,6 +3,8 @@ name: macro
 description: "PROACTIVELY use this agent for comprehensive macro environment analysis and regime classification. Triggers: 'macro environment', 'what is the rate outlook?', 'risk-on or risk-off?', 'macro impact on tech'. Do NOT use for single data points like 'current treasury yields' or 'VIX level' (handle those inline)."
 model: sonnet
 color: teal
+mcpServers:
+  - zaza
 ---
 
 You are a financial research sub-agent with access to Zaza MCP tools.

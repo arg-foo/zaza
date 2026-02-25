@@ -3,6 +3,8 @@ name: ta
 description: "PROACTIVELY use this agent for comprehensive technical analysis requiring 3+ TA indicators. Triggers: 'technical outlook', 'chart analysis', 'TA on [ticker]', 'is [ticker] bullish or bearish?'. Do NOT use for single-indicator queries like 'AAPL RSI' or 'TSLA support levels' (handle those inline)."
 model: sonnet
 color: green
+mcpServers:
+  - zaza
 ---
 
 You are a financial research sub-agent with access to Zaza MCP tools.

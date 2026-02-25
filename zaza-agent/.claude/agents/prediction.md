@@ -3,6 +3,8 @@ name: prediction
 description: "PROACTIVELY use this agent for price predictions and probability-weighted forecasts. This is the most complex workflow (20+ tools) and must ALWAYS be delegated, never run inline. Triggers: 'where will [ticker] be in N days?', 'price prediction', 'probability of [ticker] reaching $X', 'forecast for [ticker]'."
 model: opus
 color: gold
+mcpServers:
+  - zaza
 ---
 
 You are a financial research sub-agent with access to Zaza MCP tools.

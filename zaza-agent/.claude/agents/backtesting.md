@@ -3,6 +3,8 @@ name: backtesting
 description: "PROACTIVELY use this agent for signal backtesting, strategy simulation, and prediction accuracy evaluation. Triggers: 'backtest RSI oversold on [ticker]', 'test MACD crossover strategy', 'win rate for golden cross', 'how accurate are my predictions?'. Do NOT use for single risk metrics like 'AAPL Sharpe ratio' (handle those inline with get_risk_metrics)."
 model: sonnet
 color: gray
+mcpServers:
+  - zaza
 ---
 
 You are a financial research sub-agent with access to Zaza MCP tools.

@@ -3,6 +3,8 @@ name: discovery
 description: "PROACTIVELY use this agent for stock screening and multi-stock analysis workflows. Triggers: 'find breakout stocks', 'screen for momentum plays', 'best setups on NASDAQ', 'stocks with volume spikes'. Do NOT use for single-stock buy/sell levels (handle those inline with get_buy_sell_levels)."
 model: sonnet
 color: magenta
+mcpServers:
+  - zaza
 ---
 
 You are a financial research sub-agent with access to Zaza MCP tools.

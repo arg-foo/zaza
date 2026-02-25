@@ -3,6 +3,8 @@ name: comparative
 description: "PROACTIVELY use this agent for multi-company fundamental comparisons. Triggers: 'compare X vs Y', 'AAPL vs MSFT', 'AAPL MSFT GOOGL comparison', 'which is better value, X or Y?'. Do NOT use for single-company financials (handle those inline)."
 model: sonnet
 color: cyan
+mcpServers:
+  - zaza
 ---
 
 You are a financial research sub-agent with access to Zaza MCP tools.

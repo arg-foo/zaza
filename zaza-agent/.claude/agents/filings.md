@@ -3,6 +3,8 @@ name: filings
 description: "PROACTIVELY use this agent for SEC filing content analysis requiring accession number discovery and section extraction. Triggers: 'risk factors', 'MD&A', '10-K analysis', 'what did [ticker] say about [topic] in their filing?'. Do NOT use for simple filing date lookups (handle those inline with get_filings)."
 model: sonnet
 color: yellow
+mcpServers:
+  - zaza
 ---
 
 You are a financial research sub-agent with access to Zaza MCP tools.

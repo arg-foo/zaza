@@ -3,6 +3,8 @@ name: options
 description: "PROACTIVELY use this agent for comprehensive options positioning and flow analysis requiring multiple options tools. Triggers: 'options positioning on [ticker]', 'gamma exposure for [ticker]', 'options flow for [ticker]', 'is there unusual options activity?'. Do NOT use for single metrics like 'AAPL IV rank' or 'TSLA put/call ratio' (handle those inline)."
 model: sonnet
 color: red
+mcpServers:
+  - zaza
 ---
 
 You are a financial research sub-agent with access to Zaza MCP tools.
