@@ -684,17 +684,20 @@ def main() -> None:
             timestamp=data["timestamp"],
         )
 
-        # Log summary to terminal (stderr)
+        # Log summary directly to terminal (bypass Claude Code capture)
         cash = data["account"].get("cash_balance", 0.0)
         net_liq = data["account"].get("net_liquidation", 0.0)
         n_pos = len(data["positions"])
         n_orders = len(data["open_orders"])
         n_plans = len(data["plans"])
-        print(
-            f"[portfolio] cash=${cash:,.2f} | net_liq=${net_liq:,.2f} | "
-            f"positions={n_pos} | orders={n_orders} | plans={n_plans}",
-            file=sys.stderr,
-        )
+        try:
+            with open("/dev/tty", "w") as tty:
+                tty.write(
+                    f"\033[90m[portfolio] cash=${cash:,.2f} | net_liq=${net_liq:,.2f} | "
+                    f"positions={n_pos} | orders={n_orders} | plans={n_plans}\033[0m\n"
+                )
+        except OSError:
+            pass  # No controlling terminal (e.g. CI)
 
         print(output)
         sys.exit(0)
