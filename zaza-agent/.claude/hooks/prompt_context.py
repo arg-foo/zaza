@@ -684,6 +684,18 @@ def main() -> None:
             timestamp=data["timestamp"],
         )
 
+        # Log summary to terminal (stderr)
+        cash = data["account"].get("cash_balance", 0.0)
+        net_liq = data["account"].get("net_liquidation", 0.0)
+        n_pos = len(data["positions"])
+        n_orders = len(data["open_orders"])
+        n_plans = len(data["plans"])
+        print(
+            f"[portfolio] cash=${cash:,.2f} | net_liq=${net_liq:,.2f} | "
+            f"positions={n_pos} | orders={n_orders} | plans={n_plans}",
+            file=sys.stderr,
+        )
+
         print(output)
         sys.exit(0)
 
