@@ -289,10 +289,13 @@
   <!--   Step 1  ->  Step 2  -->  (if rebalance needed)               -->
   <!--                              comprehensive-analysis-flow       -->
   <!--                              (Phase 1-5)                       -->
-  <!--                            ->  Step 3                          -->
+  <!--                            ->  Step 3  ->  Step 4              -->
+  <!--                              (plan)       (execute outstanding)-->
   <!--                                                                -->
   <!--   Step 1  ->  Step 2  -->  (if NO rebalance needed)            -->
-  <!--                              STOP. Report status only.         -->
+  <!--                            ->  Step 4                          -->
+  <!--                              (execute outstanding from prior   -->
+  <!--                               sessions if any active plans)    -->
   <!-- ================================================================ -->
 
   <portfolio-management-flow>
@@ -343,12 +346,12 @@
       <evaluate order="first-match">
 
         <if condition="cash_balance == 0 AND positions is empty">
-          <action>STOP. Do NOT run comprehensive-analysis-flow.</action>
-          <respond>Inform the user: "No funds or positions to manage. Deposit funds to begin."</respond>
+          <action>Do NOT run comprehensive-analysis-flow. Skip to Step 4 to execute any outstanding orders from prior active trade plans.</action>
+          <respond>Inform the user: "No funds or positions to manage. Checking for outstanding orders from active trade plans."</respond>
         </if>
 
         <else-if condition="ALL position_assessments are HOLD AND cash_balance is too small for a meaningful position">
-          <action>STOP. Do NOT run comprehensive-analysis-flow.</action>
+          <action>Do NOT run comprehensive-analysis-flow. Skip to Step 4 to execute any outstanding orders from prior active trade plans.</action>
           <respond>Report each position's health status. Recommend holding current positions. State available cash is insufficient to open new positions.</respond>
         </else-if>
 
@@ -359,7 +362,7 @@
                - Any single position exceeds 25% portfolio weight (concentration risk)
           -->
           <action>RUN comprehensive-analysis-flow (Phase 1 through Phase 5, defined below).</action>
-          <action>After comprehensive-analysis-flow completes, proceed to Step 3.</action>
+          <action>After comprehensive-analysis-flow completes, proceed to Step 3, then Step 4.</action>
         </else>
 
       </evaluate>
@@ -392,13 +395,74 @@
       <persistence>
         After generating each trade-plan XML block:
         1. Call save_trade_plan(xml="&lt;trade-plan ...&gt;...&lt;/trade-plan&gt;") to persist the plan. Note the returned plan_id.
-        2. When a broker order is placed and returns an order_id:
-           a. Call get_trade_plan(plan_id) to retrieve the current XML
-           b. Update the &lt;order_id&gt; field(s) in the XML with the actual broker order_id
-           c. Call update_trade_plan(plan_id, xml) to persist the update
-        3. When a trade is closed (stop hit, target hit, or manual exit):
-           a. Call close_trade_plan(plan_id, reason="target_hit|stop_hit|manual_exit|cancelled")
       </persistence>
+    </step>
+
+    <!-- ============================================================ -->
+    <!-- Step 4: Execute Outstanding Orders via Tiger Broker          -->
+    <!-- ALWAYS runs after Step 3 (or after Step 2 if no rebalance). -->
+    <!-- Scans ALL active trade plans for unexecuted limit-orders    -->
+    <!-- and places them through Tiger broker.                        -->
+    <!-- ============================================================ -->
+
+    <step id="4" name="Execute Outstanding Orders">
+      <prerequisite>Step 3 has completed (or was skipped because no rebalance needed).</prerequisite>
+      <instruction>
+        1. DISCOVER outstanding orders:
+           a. Call list_trade_plans(status="active") to get ALL active trade plans (not just plans from this session)
+           b. Call mcp__tiger__get_open_orders() to get all currently live broker orders
+           c. For each active trade plan, call get_trade_plan(plan_id) and parse the XML
+           d. Identify limit-orders where &lt;order_id&gt; is still a placeholder (e.g. "SOME_ORDER_ID" or matches {SIDE}-{TICKER}-* format without a numeric broker ID)
+              AND there is no matching live broker order for that ticker/side/price
+           e. These are the OUTSTANDING orders that need execution
+
+        2. SELL SIDE FIRST (free up capital):
+           For each outstanding SELL limit-order across all active plans:
+           a. Preview: mcp__tiger__preview_stock_order(symbol, action="SELL", quantity, order_type per XML, limit_price)
+           b. Verify no safety errors
+           c. Place: mcp__tiger__place_stock_order(symbol, action="SELL", quantity, order_type, limit_price)
+           d. Record the returned broker order_id
+
+        3. BUY SIDE (new entries):
+           For each outstanding BUY entry limit-order across all active plans:
+           a. Preview: mcp__tiger__preview_stock_order(symbol, action="BUY", quantity, order_type="LMT", limit_price)
+           b. Verify no safety errors and sufficient buying power
+           c. Place: mcp__tiger__place_stock_order(symbol, action="BUY", quantity, order_type="LMT", limit_price)
+           d. Record the returned broker order_id
+
+        4. PROTECTIVE ORDERS (stop-loss and take-profit):
+           For each outstanding stop-loss or take-profit limit-order across all active plans:
+           a. Stop-loss: mcp__tiger__place_stock_order(symbol, action="SELL", quantity, order_type="STP_LMT", stop_price, limit_price)
+           b. Take-profit: mcp__tiger__place_stock_order(symbol, action="SELL", quantity, order_type="LMT", limit_price=target_price)
+           c. Record broker order_ids
+
+        5. VERIFY: Call mcp__tiger__get_open_orders() to confirm all orders are live. Cross-check against all active trade plans.
+      </instruction>
+
+      <error-handling>
+        <rule>If preview_stock_order returns a safety ERROR, do NOT place that order. Log the error, skip the trade, and note it in the summary.</rule>
+        <rule>If preview returns only WARNINGS, proceed with placement but include warnings in the summary.</rule>
+        <rule>If place_stock_order fails, retry once. If it fails again, skip and note in summary.</rule>
+        <rule>If a BUY entry fails, do NOT place its corresponding stop-loss or take-profit orders.</rule>
+        <rule>If buying power is insufficient for remaining BUY orders, prioritize by conviction (HIGH first) and skip the rest.</rule>
+        <rule>Always execute SELL orders before BUY orders to free up capital.</rule>
+      </error-handling>
+
+      <persistence>
+        After each broker order is placed and returns an order_id:
+        1. Call get_trade_plan(plan_id) to retrieve the current XML
+        2. Update the &lt;order_id&gt; field(s) in the XML with the actual broker order_id
+        3. Call update_trade_plan(plan_id, xml) to persist the update
+        When a trade is closed (stop hit, target hit, or manual exit):
+        4. Call close_trade_plan(plan_id, reason="target_hit|stop_hit|manual_exit|cancelled")
+      </persistence>
+
+      <output>
+        Present an execution summary:
+        | Status | Ticker | Side | Qty | Type | Price | Order ID | Notes |
+        Include: orders placed, orders skipped (with reason), total capital deployed, remaining buying power.
+        End with a final portfolio state from mcp__tiger__get_positions() and mcp__tiger__get_account_summary().
+      </output>
     </step>
 
     <!-- ============================================================ -->
