@@ -12,7 +12,13 @@ import sys
 
 import structlog
 
-from zaza.config import has_fred_key, has_reddit_credentials
+from zaza.config import (
+    ZAZA_MCP_HOST,
+    ZAZA_MCP_PORT,
+    ZAZA_MCP_TRANSPORT,
+    has_fred_key,
+    has_reddit_credentials,
+)
 
 # Configure logging to stderr (stdout is reserved for MCP protocol)
 logging.basicConfig(
@@ -148,10 +154,16 @@ async def main() -> None:
         logger.info("zaza_check_passed", status="ok")
         return
 
-    logger.info("zaza_server_starting")
+    logger.info("zaza_server_starting", transport=ZAZA_MCP_TRANSPORT)
     log_optional_clients()
     mcp = _create_server()
-    await mcp.run_stdio_async()
+
+    if ZAZA_MCP_TRANSPORT == "streamable-http":
+        mcp.settings.host = ZAZA_MCP_HOST
+        mcp.settings.port = ZAZA_MCP_PORT
+        await mcp.run_streamable_http_async()
+    else:
+        await mcp.run_stdio_async()
 
 
 if __name__ == "__main__":

@@ -150,6 +150,10 @@ class TestHandleStopFill:
         """Stop-loss fill cancels take-profit order and closes plan as stop_hit."""
         mcp = _make_mcp_mock()
         mcp.get_trade_plan.return_value = _make_plan_json(PLAN_WITH_ORDERS_XML)
+        mcp.get_order_detail.return_value = (
+            "Order ID: 12346\nQty: 50\nFilled Qty: 50\n"
+            "Status: FILLED"
+        )
 
         index = PlanIndex()
         index.add(12345, "plan-001", "entry")
@@ -166,12 +170,18 @@ class TestHandleStopFill:
         mcp.cancel_order.assert_called_once_with(12347)
 
         # Plan closed with reason "stop_hit"
-        mcp.close_trade_plan.assert_called_once_with("plan-001", reason="stop_hit")
+        mcp.close_trade_plan.assert_called_once_with(
+            "plan-001", reason="stop_hit",
+        )
 
     async def test_cancel_failure_still_closes_plan(self) -> None:
         """If cancel_order fails (e.g., already expired), plan is still closed."""
         mcp = _make_mcp_mock()
         mcp.get_trade_plan.return_value = _make_plan_json(PLAN_WITH_ORDERS_XML)
+        mcp.get_order_detail.return_value = (
+            "Order ID: 12346\nQty: 50\nFilled Qty: 50\n"
+            "Status: FILLED"
+        )
         mcp.cancel_order.side_effect = Exception("Order already cancelled")
 
         index = PlanIndex()
@@ -187,12 +197,18 @@ class TestHandleStopFill:
         )
 
         # Plan still closed
-        mcp.close_trade_plan.assert_called_once_with("plan-001", reason="stop_hit")
+        mcp.close_trade_plan.assert_called_once_with(
+            "plan-001", reason="stop_hit",
+        )
 
     async def test_removes_plan_from_index(self) -> None:
         """After stop fill, all plan entries removed from PlanIndex."""
         mcp = _make_mcp_mock()
         mcp.get_trade_plan.return_value = _make_plan_json(PLAN_WITH_ORDERS_XML)
+        mcp.get_order_detail.return_value = (
+            "Order ID: 12346\nQty: 50\nFilled Qty: 50\n"
+            "Status: FILLED"
+        )
 
         index = PlanIndex()
         index.add(12345, "plan-001", "entry")
@@ -220,6 +236,10 @@ class TestHandleStopFill:
         mcp.get_trade_plan.return_value = _make_plan_json(
             PLAN_WITHOUT_TP_ORDER_XML
         )
+        mcp.get_order_detail.return_value = (
+            "Order ID: 12346\nQty: 50\nFilled Qty: 50\n"
+            "Status: FILLED"
+        )
 
         index = PlanIndex()
         index.add(12346, "plan-001", "stop_loss")
@@ -233,7 +253,41 @@ class TestHandleStopFill:
         # No cancel attempt
         mcp.cancel_order.assert_not_called()
         # Plan still closed
-        mcp.close_trade_plan.assert_called_once_with("plan-001", reason="stop_hit")
+        mcp.close_trade_plan.assert_called_once_with(
+            "plan-001", reason="stop_hit",
+        )
+
+    async def test_partial_stop_fill_does_not_close_plan(self) -> None:
+        """Partial SL fill (25 of 50) keeps plan open, TP not cancelled."""
+        mcp = _make_mcp_mock()
+        mcp.get_trade_plan.return_value = _make_plan_json(
+            PLAN_WITH_ORDERS_XML,
+        )
+        # Order detail shows partial fill: 25 of 50
+        mcp.get_order_detail.return_value = (
+            "Order ID: 12346\nQty: 50\nFilled Qty: 25\n"
+            "Status: PARTIALLY_FILLED"
+        )
+
+        index = PlanIndex()
+        index.add(12345, "plan-001", "entry")
+        index.add(12346, "plan-001", "stop_loss")
+        index.add(12347, "plan-001", "take_profit")
+
+        event = {"orderId": 12346, "symbol": "AAPL", "filledQuantity": 25}
+
+        await handle_stop_fill(
+            event=event, plan_id="plan-001", mcp=mcp, index=index,
+        )
+
+        # TP should NOT be cancelled on partial fill
+        mcp.cancel_order.assert_not_called()
+        # Plan should NOT be closed
+        mcp.close_trade_plan.assert_not_called()
+        # Index should still have all entries
+        assert index.lookup(12345) == ("plan-001", "entry")
+        assert index.lookup(12346) == ("plan-001", "stop_loss")
+        assert index.lookup(12347) == ("plan-001", "take_profit")
 
 
 # ---------------------------------------------------------------------------
@@ -248,6 +302,10 @@ class TestHandleTpFill:
         """Take-profit fill cancels stop-loss order and closes plan as target_hit."""
         mcp = _make_mcp_mock()
         mcp.get_trade_plan.return_value = _make_plan_json(PLAN_WITH_ORDERS_XML)
+        mcp.get_order_detail.return_value = (
+            "Order ID: 12347\nQty: 50\nFilled Qty: 50\n"
+            "Status: FILLED"
+        )
 
         index = PlanIndex()
         index.add(12345, "plan-001", "entry")
@@ -264,12 +322,18 @@ class TestHandleTpFill:
         mcp.cancel_order.assert_called_once_with(12346)
 
         # Plan closed with reason "target_hit"
-        mcp.close_trade_plan.assert_called_once_with("plan-001", reason="target_hit")
+        mcp.close_trade_plan.assert_called_once_with(
+            "plan-001", reason="target_hit",
+        )
 
     async def test_cancel_failure_still_closes_plan(self) -> None:
         """If cancel_order fails, plan is still closed."""
         mcp = _make_mcp_mock()
         mcp.get_trade_plan.return_value = _make_plan_json(PLAN_WITH_ORDERS_XML)
+        mcp.get_order_detail.return_value = (
+            "Order ID: 12347\nQty: 50\nFilled Qty: 50\n"
+            "Status: FILLED"
+        )
         mcp.cancel_order.side_effect = Exception("Order already cancelled")
 
         index = PlanIndex()
@@ -283,12 +347,18 @@ class TestHandleTpFill:
             event=event, plan_id="plan-001", mcp=mcp, index=index,
         )
 
-        mcp.close_trade_plan.assert_called_once_with("plan-001", reason="target_hit")
+        mcp.close_trade_plan.assert_called_once_with(
+            "plan-001", reason="target_hit",
+        )
 
     async def test_removes_plan_from_index(self) -> None:
         """After TP fill, all plan entries removed from PlanIndex."""
         mcp = _make_mcp_mock()
         mcp.get_trade_plan.return_value = _make_plan_json(PLAN_WITH_ORDERS_XML)
+        mcp.get_order_detail.return_value = (
+            "Order ID: 12347\nQty: 50\nFilled Qty: 50\n"
+            "Status: FILLED"
+        )
 
         index = PlanIndex()
         index.add(12345, "plan-001", "entry")
@@ -311,6 +381,10 @@ class TestHandleTpFill:
         mcp.get_trade_plan.return_value = _make_plan_json(
             PLAN_WITHOUT_SL_ORDER_XML
         )
+        mcp.get_order_detail.return_value = (
+            "Order ID: 12347\nQty: 50\nFilled Qty: 50\n"
+            "Status: FILLED"
+        )
 
         index = PlanIndex()
         index.add(12347, "plan-001", "take_profit")
@@ -324,4 +398,38 @@ class TestHandleTpFill:
         # No cancel attempt
         mcp.cancel_order.assert_not_called()
         # Plan still closed
-        mcp.close_trade_plan.assert_called_once_with("plan-001", reason="target_hit")
+        mcp.close_trade_plan.assert_called_once_with(
+            "plan-001", reason="target_hit",
+        )
+
+    async def test_partial_tp_fill_does_not_close_plan(self) -> None:
+        """Partial TP fill (25 of 50) keeps plan open, SL not cancelled."""
+        mcp = _make_mcp_mock()
+        mcp.get_trade_plan.return_value = _make_plan_json(
+            PLAN_WITH_ORDERS_XML,
+        )
+        # Order detail shows partial fill: 25 of 50
+        mcp.get_order_detail.return_value = (
+            "Order ID: 12347\nQty: 50\nFilled Qty: 25\n"
+            "Status: PARTIALLY_FILLED"
+        )
+
+        index = PlanIndex()
+        index.add(12345, "plan-001", "entry")
+        index.add(12346, "plan-001", "stop_loss")
+        index.add(12347, "plan-001", "take_profit")
+
+        event = {"orderId": 12347, "symbol": "AAPL", "filledQuantity": 25}
+
+        await handle_tp_fill(
+            event=event, plan_id="plan-001", mcp=mcp, index=index,
+        )
+
+        # SL should NOT be cancelled on partial fill
+        mcp.cancel_order.assert_not_called()
+        # Plan should NOT be closed
+        mcp.close_trade_plan.assert_not_called()
+        # Index should still have all entries
+        assert index.lookup(12345) == ("plan-001", "entry")
+        assert index.lookup(12346) == ("plan-001", "stop_loss")
+        assert index.lookup(12347) == ("plan-001", "take_profit")

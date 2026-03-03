@@ -7,6 +7,7 @@ from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
+from zaza.consumer.plan_index import PlanLocks
 
 # ---------------------------------------------------------------------------
 # Tests for main()
@@ -26,9 +27,16 @@ class TestMainWiring:
             patch("zaza.consumer.__main__.ConsumerSettings") as mock_settings_cls,
             patch("zaza.consumer.__main__.McpClients", return_value=mock_mcp),
             patch("zaza.consumer.__main__.PlanIndex") as mock_index_cls,
-            patch("zaza.consumer.__main__.reconcile_on_startup", new_callable=AsyncMock) as mock_reconcile,
-            patch("zaza.consumer.__main__.consume_stream", new_callable=AsyncMock) as mock_consume,
-            patch("zaza.consumer.__main__.rth_scan_loop", new_callable=AsyncMock) as mock_rth_loop,
+            patch(
+                "zaza.consumer.__main__.reconcile_on_startup",
+                new_callable=AsyncMock,
+            ) as mock_reconcile,
+            patch(
+                "zaza.consumer.__main__.consume_stream", new_callable=AsyncMock,
+            ) as mock_consume,
+            patch(
+                "zaza.consumer.__main__.rth_scan_loop", new_callable=AsyncMock,
+            ) as mock_rth_loop,
         ):
             mock_settings = MagicMock()
             mock_settings.tiger_mcp_url = "http://tiger"
@@ -49,7 +57,12 @@ class TestMainWiring:
 
             # Verify lifecycle order
             mock_mcp.connect.assert_called_once()
-            mock_reconcile.assert_called_once_with(mock_mcp, mock_index, mock_settings)
+            mock_reconcile.assert_called_once()
+            call_args = mock_reconcile.call_args
+            assert call_args[0][0] is mock_mcp
+            assert call_args[0][1] is mock_index
+            assert call_args[0][2] is mock_settings
+            assert isinstance(call_args[0][3], PlanLocks)
             mock_consume.assert_called_once()
             mock_mcp.close.assert_called_once()
 

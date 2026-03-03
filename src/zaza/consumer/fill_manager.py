@@ -193,6 +193,13 @@ async def handle_entry_fill(
     # 3. Parse exit parameters
     exit_params = _parse_exit_params(xml_string)
 
+    if "sl_ticker" not in exit_params:
+        logger.error("missing_stop_loss_params", plan_id=plan_id)
+        return
+    if "tp_ticker" not in exit_params:
+        logger.error("missing_take_profit_params", plan_id=plan_id)
+        return
+
     # 4. Check existing protective order IDs
     sl_order_id = _get_order_id(xml_string, "exit/stop-loss/limit-order/order_id")
     tp_order_id = _get_order_id(xml_string, "exit/take-profit/limit-order/order_id")
@@ -230,27 +237,42 @@ async def handle_entry_fill(
         await asyncio.sleep(order_delay_ms / 1000)
 
     # 6. Take-profit: place or modify
-    if not tp_exists:
-        tp_result = await mcp.place_order(
-            symbol=exit_params["tp_ticker"],
-            action="SELL",
-            quantity=filled_qty,
-            order_type="LMT",
-            limit_price=exit_params["tp_limit_price"],
-        )
-        new_tp_id = _extract_order_id_from_result(tp_result)
-        if new_tp_id:
-            updated_xml = _update_order_id_in_xml(
-                updated_xml, "exit/take-profit/limit-order/order_id", new_tp_id,
+    try:
+        if not tp_exists:
+            tp_result = await mcp.place_order(
+                symbol=exit_params["tp_ticker"],
+                action="SELL",
+                quantity=filled_qty,
+                order_type="LMT",
+                limit_price=exit_params["tp_limit_price"],
             )
-            index.add(int(new_tp_id), plan_id, "take_profit")
-            logger.info("take_profit_placed", order_id=new_tp_id, qty=filled_qty)
-    else:
-        await mcp.modify_order(
-            order_id=int(tp_order_id),  # type: ignore[arg-type]
-            quantity=filled_qty,
-        )
-        logger.info("take_profit_modified", order_id=tp_order_id, qty=filled_qty)
+            new_tp_id = _extract_order_id_from_result(tp_result)
+            if new_tp_id:
+                updated_xml = _update_order_id_in_xml(
+                    updated_xml,
+                    "exit/take-profit/limit-order/order_id",
+                    new_tp_id,
+                )
+                index.add(int(new_tp_id), plan_id, "take_profit")
+                logger.info(
+                    "take_profit_placed",
+                    order_id=new_tp_id,
+                    qty=filled_qty,
+                )
+        else:
+            await mcp.modify_order(
+                order_id=int(tp_order_id),  # type: ignore[arg-type]
+                quantity=filled_qty,
+            )
+            logger.info(
+                "take_profit_modified",
+                order_id=tp_order_id,
+                qty=filled_qty,
+            )
+    except Exception:
+        # Persist partial progress (SL order ID) before re-raising
+        await mcp.update_trade_plan(plan_id, updated_xml)
+        raise
 
     # 7. Update quantities in XML and persist
     updated_xml = _update_quantity_in_xml(

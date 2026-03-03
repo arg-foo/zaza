@@ -11,7 +11,6 @@ then consumes the Redis transaction stream and manages the order lifecycle.
 from __future__ import annotations
 
 import asyncio
-from collections.abc import Coroutine
 from typing import Any
 
 import structlog
@@ -21,7 +20,7 @@ from zaza.consumer.fill_manager import handle_entry_fill
 from zaza.consumer.handler import TransactionHandler
 from zaza.consumer.mcp_clients import McpClients
 from zaza.consumer.oco import handle_stop_fill, handle_tp_fill
-from zaza.consumer.plan_index import PlanIndex
+from zaza.consumer.plan_index import PlanIndex, PlanLocks
 from zaza.consumer.reconciler import reconcile_on_startup, rth_scan_loop
 from zaza.consumer.stream import consume_stream
 
@@ -36,26 +35,42 @@ async def main() -> None:
     mcp = McpClients(settings.tiger_mcp_url, settings.zaza_mcp_url)
     await mcp.connect()
 
-    # Initialize plan index
+    # Initialize plan index and per-plan locks
     index = PlanIndex()
+    locks = PlanLocks()
 
     # Startup reconciliation
-    await reconcile_on_startup(mcp, index, settings)
+    await reconcile_on_startup(mcp, index, settings, locks)
 
-    # Build handler with closures that capture mcp, index, and settings
-    def _on_entry(event: dict[str, Any], plan_id: str) -> Coroutine[Any, Any, None]:
-        return handle_entry_fill(event, plan_id, mcp, index, settings.order_delay_ms)
+    # Build handler with closures that capture mcp, index, settings, locks
+    async def _on_entry(
+        event: dict[str, Any], plan_id: str,
+    ) -> None:
+        async with locks.get(plan_id):
+            await handle_entry_fill(
+                event, plan_id, mcp, index, settings.order_delay_ms,
+            )
 
-    def _on_stop(event: dict[str, Any], plan_id: str) -> Coroutine[Any, Any, None]:
-        return handle_stop_fill(event, plan_id, mcp, index)
+    async def _on_stop(
+        event: dict[str, Any], plan_id: str,
+    ) -> None:
+        async with locks.get(plan_id):
+            await handle_stop_fill(event, plan_id, mcp, index)
+        locks.remove(plan_id)
 
-    def _on_tp(event: dict[str, Any], plan_id: str) -> Coroutine[Any, Any, None]:
-        return handle_tp_fill(event, plan_id, mcp, index)
+    async def _on_tp(
+        event: dict[str, Any], plan_id: str,
+    ) -> None:
+        async with locks.get(plan_id):
+            await handle_tp_fill(event, plan_id, mcp, index)
+        locks.remove(plan_id)
 
     tx_handler = TransactionHandler(index, _on_entry, _on_stop, _on_tp)
 
     # Start RTH scan in background
-    rth_task = asyncio.create_task(rth_scan_loop(mcp, index, settings))
+    rth_task = asyncio.create_task(
+        rth_scan_loop(mcp, index, settings, locks),
+    )
 
     # Start Redis consumer loop
     try:

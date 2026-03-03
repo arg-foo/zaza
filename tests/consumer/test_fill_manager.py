@@ -424,6 +424,145 @@ class TestHandleEntryFillSubsequent:
         assert mcp.modify_order.call_count == 4
 
 
+PLAN_MISSING_SL_ELEMENT_XML = '''<trade-plan ticker="AAPL">
+  <summary><side>BUY</side><ticker>AAPL</ticker><quantity>50</quantity></summary>
+  <entry>
+    <strategy>support_bounce</strategy>
+    <limit-order>
+      <order_id>12345</order_id><type>LIMIT</type><side>BUY</side>
+      <ticker>AAPL</ticker><quantity>50</quantity>
+      <limit_price>184.00</limit_price><time_in_force>DAY</time_in_force>
+    </limit-order>
+  </entry>
+  <exit>
+    <take-profit>
+      <limit-order>
+        <order_id>PENDING</order_id><type>LIMIT</type><side>SELL</side>
+        <ticker>AAPL</ticker><quantity>50</quantity>
+        <limit_price>194.50</limit_price><time_in_force>DAY</time_in_force>
+      </limit-order>
+    </take-profit>
+  </exit>
+</trade-plan>'''
+
+PLAN_MISSING_TP_ELEMENT_XML = '''<trade-plan ticker="AAPL">
+  <summary><side>BUY</side><ticker>AAPL</ticker><quantity>50</quantity></summary>
+  <entry>
+    <strategy>support_bounce</strategy>
+    <limit-order>
+      <order_id>12345</order_id><type>LIMIT</type><side>BUY</side>
+      <ticker>AAPL</ticker><quantity>50</quantity>
+      <limit_price>184.00</limit_price><time_in_force>DAY</time_in_force>
+    </limit-order>
+  </entry>
+  <exit>
+    <stop-loss>
+      <limit-order>
+        <order_id>PENDING</order_id><type>STOP_LIMIT</type><side>SELL</side>
+        <ticker>AAPL</ticker><quantity>50</quantity>
+        <limit_price>179.50</limit_price><time_in_force>DAY</time_in_force>
+      </limit-order>
+    </stop-loss>
+  </exit>
+</trade-plan>'''
+
+
+class TestHandleEntryFillMissingExitParams:
+    """Tests for missing stop-loss or take-profit XML elements."""
+
+    async def test_missing_stop_loss_element_returns_early(self) -> None:
+        """Plan without <stop-loss> logs error and returns."""
+        mcp = _make_mcp_mock()
+        mcp.get_trade_plan.return_value = _make_plan_json(
+            PLAN_MISSING_SL_ELEMENT_XML,
+        )
+
+        index = PlanIndex()
+        index.add(12345, "plan-001", "entry")
+
+        event = {"orderId": 12345, "symbol": "AAPL", "filledQuantity": 50}
+
+        await handle_entry_fill(
+            event=event,
+            plan_id="plan-001",
+            mcp=mcp,
+            index=index,
+            order_delay_ms=0,
+        )
+
+        # Should NOT place any orders
+        mcp.place_order.assert_not_called()
+        mcp.modify_order.assert_not_called()
+        mcp.update_trade_plan.assert_not_called()
+
+    async def test_missing_take_profit_element_returns_early(self) -> None:
+        """Plan without <take-profit> logs error and returns."""
+        mcp = _make_mcp_mock()
+        mcp.get_trade_plan.return_value = _make_plan_json(
+            PLAN_MISSING_TP_ELEMENT_XML,
+        )
+
+        index = PlanIndex()
+        index.add(12345, "plan-001", "entry")
+
+        event = {"orderId": 12345, "symbol": "AAPL", "filledQuantity": 50}
+
+        await handle_entry_fill(
+            event=event,
+            plan_id="plan-001",
+            mcp=mcp,
+            index=index,
+            order_delay_ms=0,
+        )
+
+        # Should NOT place any orders
+        mcp.place_order.assert_not_called()
+        mcp.modify_order.assert_not_called()
+        mcp.update_trade_plan.assert_not_called()
+
+
+class TestHandleEntryFillPartialFailure:
+    """Tests for partial failure during protective order placement."""
+
+    async def test_tp_failure_still_persists_sl_order_id(self) -> None:
+        """If TP placement fails, SL order ID is still persisted."""
+        mcp = _make_mcp_mock()
+        mcp.get_trade_plan.return_value = _make_plan_json(SAMPLE_PLAN_XML)
+        mcp.place_order.side_effect = [
+            "Order ID: 99001\nStatus: SUBMITTED",  # SL succeeds
+            RuntimeError("TP placement failed"),     # TP fails
+        ]
+
+        index = PlanIndex()
+        index.add(12345, "plan-001", "entry")
+
+        event = {"orderId": 12345, "symbol": "AAPL", "filledQuantity": 50}
+
+        with pytest.raises(RuntimeError, match="TP placement failed"):
+            await handle_entry_fill(
+                event=event,
+                plan_id="plan-001",
+                mcp=mcp,
+                index=index,
+                order_delay_ms=0,
+            )
+
+        # update_trade_plan MUST have been called to persist SL order ID
+        mcp.update_trade_plan.assert_called_once()
+        call_args = mcp.update_trade_plan.call_args
+        updated_xml = (
+            call_args.args[1]
+            if call_args.args
+            else call_args.kwargs["xml"]
+        )
+
+        # Verify SL order ID is persisted in the XML
+        root = ET.fromstring(updated_xml)
+        sl_id = root.find("exit/stop-loss/limit-order/order_id")
+        assert sl_id is not None
+        assert sl_id.text == "99001"
+
+
 class TestHandleEntryFillEdgeCases:
     """Edge cases for handle_entry_fill."""
 

@@ -17,10 +17,11 @@ from zaza.consumer.reconciler import reconcile_on_startup, rth_scan_loop
 # ---------------------------------------------------------------------------
 
 # Plan where entry filled, protective orders PENDING (not yet placed)
-PLAN_ENTRY_FILLED_NO_PROTECTIVES_XML = '''<trade-plan ticker="AAPL" generated="2026-02-24 14:30 UTC">
+PLAN_ENTRY_FILLED_NO_PROTECTIVES_XML = (
+    '''<trade-plan ticker="AAPL" generated="2026-02-24">
   <summary><side>BUY</side><ticker>AAPL</ticker><quantity>50</quantity></summary>
   <entry>
-    <strategy>support_bounce</strategy><trigger>Price holds above $183.50</trigger>
+    <strategy>support_bounce</strategy>
     <limit-order>
       <order_id>12345</order_id><type>LIMIT</type><side>BUY</side><ticker>AAPL</ticker>
       <quantity>50</quantity><limit_price>184.00</limit_price><time_in_force>DAY</time_in_force>
@@ -41,9 +42,10 @@ PLAN_ENTRY_FILLED_NO_PROTECTIVES_XML = '''<trade-plan ticker="AAPL" generated="2
     </take-profit>
   </exit>
 </trade-plan>'''
+)
 
 # Plan with all orders filled/placed: entry 12345, SL 12346, TP 12347
-PLAN_ALL_ORDERS_XML = '''<trade-plan ticker="AAPL" generated="2026-02-24 14:30 UTC">
+PLAN_ALL_ORDERS_XML = '''<trade-plan ticker="AAPL" generated="2026-02-24">
   <summary><side>BUY</side><ticker>AAPL</ticker><quantity>50</quantity></summary>
   <entry>
     <strategy>support_bounce</strategy><trigger>Price holds above $183.50</trigger>
@@ -69,7 +71,7 @@ PLAN_ALL_ORDERS_XML = '''<trade-plan ticker="AAPL" generated="2026-02-24 14:30 U
 </trade-plan>'''
 
 # Plan where entry is still a placeholder (not yet filled)
-PLAN_ENTRY_PENDING_XML = '''<trade-plan ticker="TSLA" generated="2026-02-24 14:30 UTC">
+PLAN_ENTRY_PENDING_XML = '''<trade-plan ticker="TSLA" generated="2026-02-24">
   <summary><side>BUY</side><ticker>TSLA</ticker><quantity>10</quantity></summary>
   <entry>
     <strategy>breakout</strategy><trigger>Price breaks above $250</trigger>
@@ -192,7 +194,9 @@ class TestReconcileEntryFilledNoProtectives:
         )
         # No open orders
         mcp.get_open_orders.return_value = "No open orders."
-        mcp.get_order_detail.return_value = "Filled Qty: 50\nAvg Price: 184.00"
+        mcp.get_order_detail.return_value = (
+            "Filled Qty: 50\nAvg Price: 184.00"
+        )
 
         # place_order returns distinct IDs
         mcp.place_order.side_effect = [
@@ -203,14 +207,60 @@ class TestReconcileEntryFilledNoProtectives:
         index = PlanIndex()
         settings = _make_settings()
 
-        with patch("zaza.consumer.reconciler.handle_entry_fill", new_callable=AsyncMock) as mock_fill:
+        with patch(
+            "zaza.consumer.reconciler.handle_entry_fill",
+            new_callable=AsyncMock,
+        ) as mock_fill:
             await reconcile_on_startup(mcp, index, settings)
 
-            # handle_entry_fill should be called for the plan with filled entry
+            # handle_entry_fill should be called for the plan
             mock_fill.assert_called_once()
             call_args = mock_fill.call_args
-            # Verify it was called with the right plan_id
-            assert call_args[1]["plan_id"] == "plan-001" or call_args[0][1] == "plan-001"
+            assert (
+                call_args[1]["plan_id"] == "plan-001"
+                or call_args[0][1] == "plan-001"
+            )
+
+    async def test_synthetic_event_has_filled_qty_from_broker(
+        self,
+    ) -> None:
+        """Synthetic event should carry filledQuantity from order detail,
+        not 0."""
+        mcp = _make_mcp_mock()
+
+        plans_list = orjson.dumps([
+            {"plan_id": "plan-001", "ticker": "AAPL", "side": "long",
+             "status": "active", "created": "2026-01-01T00:00:00"}
+        ]).decode()
+        mcp.list_trade_plans.return_value = plans_list
+        mcp.get_trade_plan.return_value = _make_plan_json(
+            PLAN_ENTRY_FILLED_NO_PROTECTIVES_XML
+        )
+        mcp.get_filled_orders.return_value = (
+            "Order ID: 12345\nSymbol: AAPL\nAction: BUY\n"
+            "Filled Qty: 50\nAvg Price: 184.00"
+        )
+        mcp.get_open_orders.return_value = "No open orders."
+        # Order detail has Filled Qty: 50
+        mcp.get_order_detail.return_value = (
+            "Order ID: 12345\nQty: 50\nFilled Qty: 50\n"
+            "Avg Price: 184.00"
+        )
+
+        index = PlanIndex()
+        settings = _make_settings()
+
+        with patch(
+            "zaza.consumer.reconciler.handle_entry_fill",
+            new_callable=AsyncMock,
+        ) as mock_fill:
+            await reconcile_on_startup(mcp, index, settings)
+
+            mock_fill.assert_called_once()
+            call_kw = mock_fill.call_args[1]
+            event = call_kw["event"]
+            # filledQuantity must NOT be 0
+            assert event["filledQuantity"] == 50
 
 
 class TestReconcileStopFilled:
@@ -241,7 +291,10 @@ class TestReconcileStopFilled:
         index = PlanIndex()
         settings = _make_settings()
 
-        with patch("zaza.consumer.reconciler.handle_stop_fill", new_callable=AsyncMock) as mock_stop:
+        with patch(
+            "zaza.consumer.reconciler.handle_stop_fill",
+            new_callable=AsyncMock,
+        ) as mock_stop:
             await reconcile_on_startup(mcp, index, settings)
 
             mock_stop.assert_called_once()
@@ -358,7 +411,9 @@ class TestReconcileExpiredProtectives:
              "status": "active", "created": "2026-01-01T00:00:00"}
         ]).decode()
         mcp.list_trade_plans.return_value = plans_list
-        mcp.get_trade_plan.return_value = _make_plan_json(PLAN_ALL_ORDERS_XML)
+        mcp.get_trade_plan.return_value = _make_plan_json(
+            PLAN_ALL_ORDERS_XML,
+        )
 
         # Entry 12345 was filled (appears in filled orders)
         mcp.get_filled_orders.return_value = (
@@ -367,22 +422,81 @@ class TestReconcileExpiredProtectives:
         )
         # Neither SL 12346 nor TP 12347 appear in open orders (expired)
         mcp.get_open_orders.return_value = "No open orders."
-        mcp.get_order_detail.return_value = "Filled Qty: 50\nAvg Price: 184.00"
-
-        # SL 12346 and TP 12347 NOT in filled orders
-        # (filled_orders only shows entry 12345)
+        mcp.get_order_detail.return_value = (
+            "Filled Qty: 50\nAvg Price: 184.00"
+        )
 
         index = PlanIndex()
         settings = _make_settings()
 
         with (
-            patch("zaza.consumer.reconciler.is_rth_open", return_value=True),
-            patch("zaza.consumer.reconciler.handle_entry_fill", new_callable=AsyncMock) as mock_fill,
+            patch(
+                "zaza.consumer.reconciler.is_rth_open",
+                return_value=True,
+            ),
+            patch(
+                "zaza.consumer.reconciler.handle_entry_fill",
+                new_callable=AsyncMock,
+            ) as mock_fill,
         ):
             await reconcile_on_startup(mcp, index, settings)
 
             # Should re-place protective orders via handle_entry_fill
             mock_fill.assert_called_once()
+
+    async def test_is_rth_open_receives_settings_values(self) -> None:
+        """is_rth_open() should be called with settings' RTH parameters."""
+        mcp = _make_mcp_mock()
+
+        plans_list = orjson.dumps([
+            {"plan_id": "plan-001", "ticker": "AAPL", "side": "long",
+             "status": "active", "created": "2026-01-01T00:00:00"}
+        ]).decode()
+        mcp.list_trade_plans.return_value = plans_list
+        mcp.get_trade_plan.return_value = _make_plan_json(
+            PLAN_ALL_ORDERS_XML,
+        )
+        mcp.get_filled_orders.return_value = (
+            "Order ID: 12345\nSymbol: AAPL\nAction: BUY\n"
+            "Filled Qty: 50\nAvg Price: 184.00"
+        )
+        mcp.get_open_orders.return_value = "No open orders."
+        mcp.get_order_detail.return_value = (
+            "Filled Qty: 50\nAvg Price: 184.00"
+        )
+
+        index = PlanIndex()
+        settings = ConsumerSettings(
+            redis_url="redis://localhost:6379",
+            tiger_mcp_url="http://localhost:8001/mcp",
+            zaza_mcp_url="http://localhost:8002/mcp",
+            rth_open_hour=10,
+            rth_open_minute=15,
+            rth_close_hour=15,
+            rth_close_minute=45,
+            rth_scan_interval_seconds=1,
+            order_delay_ms=0,
+        )
+
+        with (
+            patch(
+                "zaza.consumer.reconciler.is_rth_open",
+                return_value=True,
+            ) as mock_rth,
+            patch(
+                "zaza.consumer.reconciler.handle_entry_fill",
+                new_callable=AsyncMock,
+            ),
+        ):
+            await reconcile_on_startup(mcp, index, settings)
+
+            # is_rth_open should be called with settings values
+            mock_rth.assert_called_with(
+                rth_open_hour=10,
+                rth_open_minute=15,
+                rth_close_hour=15,
+                rth_close_minute=45,
+            )
 
 
 class TestReconcileIndexRebuilt:
@@ -432,7 +546,7 @@ class TestReconcileIndexRebuilt:
         ]).decode()
         mcp.list_trade_plans.return_value = plans_list
 
-        tsla_xml = '''<trade-plan ticker="TSLA" generated="2026-02-24 14:30 UTC">
+        tsla_xml = '''<trade-plan ticker="TSLA" generated="2026-02-24">
   <summary><side>BUY</side><ticker>TSLA</ticker><quantity>10</quantity></summary>
   <entry>
     <limit-order>
@@ -587,6 +701,49 @@ class TestRthScanLoop:
             # Should NOT have called list_trade_plans (RTH closed)
             mcp.list_trade_plans.assert_not_called()
 
+    async def test_rth_scan_passes_settings_to_is_rth_open(self) -> None:
+        """rth_scan_loop passes settings RTH params to is_rth_open."""
+        mcp = _make_mcp_mock()
+        index = PlanIndex()
+        settings = ConsumerSettings(
+            redis_url="redis://localhost:6379",
+            tiger_mcp_url="http://localhost:8001/mcp",
+            zaza_mcp_url="http://localhost:8002/mcp",
+            rth_open_hour=10,
+            rth_open_minute=15,
+            rth_close_hour=15,
+            rth_close_minute=45,
+            rth_scan_interval_seconds=1,
+            order_delay_ms=0,
+        )
+
+        iteration_count = 0
+
+        with patch(
+            "zaza.consumer.reconciler.is_rth_open",
+            return_value=False,
+        ) as mock_rth:
+            original_sleep = asyncio.sleep
+
+            async def _counting_sleep(duration: float) -> None:
+                nonlocal iteration_count
+                iteration_count += 1
+                if iteration_count >= 2:
+                    raise asyncio.CancelledError
+                await original_sleep(0.01)
+
+            with patch("asyncio.sleep", side_effect=_counting_sleep):
+                with pytest.raises(asyncio.CancelledError):
+                    await rth_scan_loop(mcp, index, settings)
+
+            # is_rth_open called with settings values
+            mock_rth.assert_called_with(
+                rth_open_hour=10,
+                rth_open_minute=15,
+                rth_close_hour=15,
+                rth_close_minute=45,
+            )
+
     async def test_scan_replaces_expired_protective_orders(self) -> None:
         """During RTH scan, expired protective orders trigger handle_entry_fill."""
         mcp = _make_mcp_mock()
@@ -616,7 +773,10 @@ class TestRthScanLoop:
 
         with (
             patch("zaza.consumer.reconciler.is_rth_open", return_value=True),
-            patch("zaza.consumer.reconciler.handle_entry_fill", new_callable=AsyncMock) as mock_fill,
+            patch(
+                "zaza.consumer.reconciler.handle_entry_fill",
+                new_callable=AsyncMock,
+            ) as mock_fill,
         ):
             original_sleep = asyncio.sleep
 

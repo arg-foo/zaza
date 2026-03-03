@@ -22,12 +22,13 @@ import structlog
 
 from zaza.consumer.config import ConsumerSettings
 from zaza.consumer.fill_manager import (
+    _FILLED_QTY_RE,
     _get_order_id,
     _is_numeric_order_id,
     handle_entry_fill,
 )
 from zaza.consumer.oco import handle_stop_fill, handle_tp_fill
-from zaza.consumer.plan_index import PlanIndex
+from zaza.consumer.plan_index import PlanIndex, PlanLocks
 from zaza.consumer.rth import is_rth_open
 
 logger = structlog.get_logger(__name__)
@@ -101,6 +102,7 @@ async def reconcile_on_startup(
     mcp: McpClientsProtocol,
     index: PlanIndex,
     settings: ConsumerSettings,
+    locks: PlanLocks | None = None,
 ) -> None:
     """Reconcile plan state against broker orders after a restart.
 
@@ -138,17 +140,29 @@ async def reconcile_on_startup(
         filled_orders=len(filled_order_ids),
     )
 
-    # 4. Reconcile each plan
+    # 4. Reconcile each plan (with per-plan locking if available)
     for plan_id, xml_string in plan_xmls:
-        await _reconcile_plan(
-            plan_id=plan_id,
-            xml_string=xml_string,
-            mcp=mcp,
-            index=index,
-            settings=settings,
-            open_order_ids=open_order_ids,
-            filled_order_ids=filled_order_ids,
-        )
+        if locks is not None:
+            async with locks.get(plan_id):
+                await _reconcile_plan(
+                    plan_id=plan_id,
+                    xml_string=xml_string,
+                    mcp=mcp,
+                    index=index,
+                    settings=settings,
+                    open_order_ids=open_order_ids,
+                    filled_order_ids=filled_order_ids,
+                )
+        else:
+            await _reconcile_plan(
+                plan_id=plan_id,
+                xml_string=xml_string,
+                mcp=mcp,
+                index=index,
+                settings=settings,
+                open_order_ids=open_order_ids,
+                filled_order_ids=filled_order_ids,
+            )
 
     logger.info("reconcile_complete")
 
@@ -234,7 +248,12 @@ async def _reconcile_plan(
     sl_expired = _is_order_expired(sl_oid, open_order_ids, filled_order_ids)
     tp_expired = _is_order_expired(tp_oid, open_order_ids, filled_order_ids)
 
-    if (sl_expired or tp_expired) and is_rth_open():
+    if (sl_expired or tp_expired) and is_rth_open(
+        rth_open_hour=settings.rth_open_hour,
+        rth_open_minute=settings.rth_open_minute,
+        rth_close_hour=settings.rth_close_hour,
+        rth_close_minute=settings.rth_close_minute,
+    ):
         logger.info(
             "reconcile_protectives_expired",
             plan_id=plan_id,
@@ -253,8 +272,30 @@ async def _rerun_entry_fill(
     index: PlanIndex,
     settings: ConsumerSettings,
 ) -> None:
-    """Re-run handle_entry_fill with a synthetic event for crash recovery."""
-    synthetic_event = {"orderId": entry_id, "symbol": "", "filledQuantity": 0}
+    """Re-run handle_entry_fill with a synthetic event for crash recovery.
+
+    Fetches the actual filled quantity from the broker order detail so
+    that ``handle_entry_fill`` can set correct protective order sizes.
+    """
+    # Fetch filled qty from broker to avoid passing 0
+    filled_qty = 0
+    try:
+        detail = await mcp.get_order_detail(entry_id)
+        match = _FILLED_QTY_RE.search(detail)
+        if match:
+            filled_qty = int(match.group(1))
+    except Exception as exc:
+        logger.warning(
+            "rerun_order_detail_failed",
+            entry_id=entry_id,
+            error=str(exc),
+        )
+
+    synthetic_event = {
+        "orderId": entry_id,
+        "symbol": "",
+        "filledQuantity": filled_qty,
+    }
     await handle_entry_fill(
         event=synthetic_event,
         plan_id=plan_id,
@@ -273,6 +314,7 @@ async def rth_scan_loop(
     mcp: McpClientsProtocol,
     index: PlanIndex,
     settings: ConsumerSettings,
+    locks: PlanLocks | None = None,
 ) -> None:
     """Periodically scan for expired protective orders during RTH.
 
@@ -280,26 +322,37 @@ async def rth_scan_loop(
     ``settings.rth_scan_interval_seconds`` between scans.
     Only performs the scan when Regular Trading Hours are open.
     """
-    logger.info("rth_scan_loop_started", interval=settings.rth_scan_interval_seconds)
+    logger.info(
+        "rth_scan_loop_started",
+        interval=settings.rth_scan_interval_seconds,
+    )
 
     while True:
         await asyncio.sleep(settings.rth_scan_interval_seconds)
 
-        if not is_rth_open():
+        if not is_rth_open(
+            rth_open_hour=settings.rth_open_hour,
+            rth_open_minute=settings.rth_open_minute,
+            rth_close_hour=settings.rth_close_hour,
+            rth_close_minute=settings.rth_close_minute,
+        ):
             logger.debug("rth_scan_skipped_market_closed")
             continue
 
         logger.info("rth_scan_running")
         try:
-            await _run_rth_scan(mcp, index, settings)
+            await _run_rth_scan(mcp, index, settings, locks)
         except Exception as exc:
-            logger.error("rth_scan_error", error=str(exc), exc_info=True)
+            logger.error(
+                "rth_scan_error", error=str(exc), exc_info=True,
+            )
 
 
 async def _run_rth_scan(
     mcp: McpClientsProtocol,
     index: PlanIndex,
     settings: ConsumerSettings,
+    locks: PlanLocks | None = None,
 ) -> None:
     """Scan active plans for expired protective orders and re-place them."""
     plans_json = await mcp.list_trade_plans()
@@ -318,26 +371,38 @@ async def _run_rth_scan(
         if not xml_string:
             continue
 
-        entry_oid = _get_order_id(xml_string, "entry/limit-order/order_id")
+        entry_oid = _get_order_id(
+            xml_string, "entry/limit-order/order_id",
+        )
         if not _is_numeric_order_id(entry_oid):
             continue
 
         entry_id = int(entry_oid)  # type: ignore[arg-type]
 
-        # Entry must have been filled (in filled orders or implied by protective IDs)
-        sl_oid = _get_order_id(xml_string, "exit/stop-loss/limit-order/order_id")
-        tp_oid = _get_order_id(xml_string, "exit/take-profit/limit-order/order_id")
+        # Entry must have been filled
+        sl_oid = _get_order_id(
+            xml_string, "exit/stop-loss/limit-order/order_id",
+        )
+        tp_oid = _get_order_id(
+            xml_string, "exit/take-profit/limit-order/order_id",
+        )
         sl_is_numeric = _is_numeric_order_id(sl_oid)
         tp_is_numeric = _is_numeric_order_id(tp_oid)
 
         entry_filled = (
-            entry_id in filled_order_ids or sl_is_numeric or tp_is_numeric
+            entry_id in filled_order_ids
+            or sl_is_numeric
+            or tp_is_numeric
         )
         if not entry_filled:
             continue
 
-        sl_expired = _is_order_expired(sl_oid, open_order_ids, filled_order_ids)
-        tp_expired = _is_order_expired(tp_oid, open_order_ids, filled_order_ids)
+        sl_expired = _is_order_expired(
+            sl_oid, open_order_ids, filled_order_ids,
+        )
+        tp_expired = _is_order_expired(
+            tp_oid, open_order_ids, filled_order_ids,
+        )
 
         if sl_expired or tp_expired:
             logger.info(
@@ -346,4 +411,12 @@ async def _run_rth_scan(
                 sl_expired=sl_expired,
                 tp_expired=tp_expired,
             )
-            await _rerun_entry_fill(entry_id, plan_id, mcp, index, settings)
+            if locks is not None:
+                async with locks.get(plan_id):
+                    await _rerun_entry_fill(
+                        entry_id, plan_id, mcp, index, settings,
+                    )
+            else:
+                await _rerun_entry_fill(
+                    entry_id, plan_id, mcp, index, settings,
+                )
