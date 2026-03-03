@@ -56,7 +56,10 @@
   <tool name="get_open_orders"         query="list open/partially-filled orders">
     <param name="symbol" type="str" required="no" description="filter by ticker, empty = all" />
   </tool>
-  <tool name="get_order_detail"        query="full order details: fills, avg fill price, commissions, status">
+  <tool name="get_order_detail"        query="full order details (not completely filled): fills, avg fill price, commissions, status">
+    <param name="order_id" type="int" required="yes" />
+  </tool>
+  <tool name="get_filled_orders"        query="completely filled order details: fills, avg fill price, commissions, status">
     <param name="order_id" type="int" required="yes" />
   </tool>
 
