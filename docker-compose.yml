@@ -1,27 +1,92 @@
-# Zaza MCP Server — Docker Compose
+# Zaza Platform — Docker Compose
+#
+# Services:
+#   redis      — Shared message broker (Tiger events stream)
+#   tiger-mcp  — Tiger Brokers MCP server (order execution)
+#   zaza       — Zaza MCP server (financial research tools)
+#   consumer   — Trade execution consumer (order lifecycle automation)
 #
 # Usage:
-#   docker compose up -d          # Start both services
-#   docker compose ps             # Check status
-#   docker compose down           # Stop both services
-#   docker compose logs zaza      # View Zaza logs
+#   docker compose up -d              # Start all services
+#   docker compose up -d zaza         # Start zaza only (stdio mode)
+#   docker compose ps                 # Check status
+#   docker compose down               # Stop all services
+#   docker compose logs consumer -f   # Follow consumer logs
 
 services:
+  # ---- Redis (shared by tiger-mcp and consumer) ----
+  redis:
+    image: redis:7-alpine
+    ports:
+      - "${REDIS_PORT:-6379}:6379"
+    volumes:
+      - redis-data:/data
+    command: redis-server --appendonly yes
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 5
+
+  # ---- Tiger Brokers MCP Server ----
+  tiger-mcp:
+    build: ./tiger-brokers-cash-mcp
+    ports:
+      - "${MCP_PORT:-8000}:8000"
+    env_file:
+      - ./tiger-brokers-cash-mcp/.env
+    volumes:
+      - ./tiger-brokers-cash-mcp/secrets/private.pem:/secrets/private.pem:ro
+      - tiger-state:/data/state
+    depends_on:
+      redis:
+        condition: service_healthy
+    environment:
+      - TIGER_PRIVATE_KEY_PATH=/secrets/private.pem
+      - TIGER_STATE_DIR=/data/state
+      - MCP_TRANSPORT=streamable-http
+      - REDIS_URL=redis://redis:6379/0
+      - TIGER_EVENTS_ENABLED=true
+
+  # ---- Zaza MCP Server (streamable-http for consumer access) ----
   zaza:
     build:
       context: .
       target: runtime
-    # stdin_open (-i) is required for MCP stdio transport —
-    # Claude Code sends JSON-RPC requests over stdin
-    stdin_open: true
+    ports:
+      - "${ZAZA_MCP_PORT:-8100}:8100"
     volumes:
-      # Persistent cache across container restarts (SQLite-backed diskcache)
       - zaza-cache:/cache
-      # Persistent trade plans — bind mount shares with host ~/.zaza/trades
       - ~/.zaza/trades:/trades
     environment:
       - ZAZA_TRADES_DIR=/trades
-    env_file: .env                # REDDIT_CLIENT_ID, FRED_API_KEY, etc.
+      - ZAZA_CACHE_DIR=/cache
+      - ZAZA_MCP_TRANSPORT=streamable-http
+      - ZAZA_MCP_HOST=0.0.0.0
+      - ZAZA_MCP_PORT=8100
+    env_file: .env
+
+  # ---- Trade Execution Consumer ----
+  consumer:
+    build:
+      context: .
+      target: consumer
+    depends_on:
+      redis:
+        condition: service_healthy
+      tiger-mcp:
+        condition: service_started
+      zaza:
+        condition: service_started
+    environment:
+      - REDIS_URL=redis://redis:6379/0
+      - TIGER_MCP_URL=http://tiger-mcp:8000/mcp
+      - ZAZA_MCP_URL=http://zaza:8100/mcp
+      - CONSUMER_GROUP=trade-executor
+      - CONSUMER_NAME=executor-1
+    restart: unless-stopped
 
 volumes:
+  redis-data:
+  tiger-state:
   zaza-cache:
