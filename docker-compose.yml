@@ -1,53 +1,19 @@
 # Zaza Platform — Docker Compose
 #
 # Services:
-#   redis      — Shared message broker (Tiger events stream)
-#   tiger-mcp  — Tiger Brokers MCP server (order execution)
-#   zaza       — Zaza MCP server (financial research tools)
-#   consumer   — Trade execution consumer (order lifecycle automation)
+#   zaza     — Zaza MCP server (financial research tools)
+#   consumer — Trade execution consumer (order lifecycle automation)
+#
+# Redis and Tiger MCP are managed externally (tiger-brokers-cash-mcp/).
+# The consumer connects to them via REDIS_URL and TIGER_MCP_URL env vars.
 #
 # Usage:
 #   docker compose up -d              # Start all services
-#   docker compose up -d zaza         # Start zaza only (stdio mode)
 #   docker compose ps                 # Check status
 #   docker compose down               # Stop all services
 #   docker compose logs consumer -f   # Follow consumer logs
 
 services:
-  # ---- Redis (shared by tiger-mcp and consumer) ----
-  redis:
-    image: redis:7-alpine
-    ports:
-      - "${REDIS_PORT:-6379}:6379"
-    volumes:
-      - redis-data:/data
-    command: redis-server --appendonly yes
-    healthcheck:
-      test: ["CMD", "redis-cli", "ping"]
-      interval: 5s
-      timeout: 3s
-      retries: 5
-
-  # ---- Tiger Brokers MCP Server ----
-  tiger-mcp:
-    build: ./tiger-brokers-cash-mcp
-    ports:
-      - "${MCP_PORT:-8000}:8000"
-    env_file:
-      - ./tiger-brokers-cash-mcp/.env
-    volumes:
-      - ./tiger-brokers-cash-mcp/secrets/private.pem:/secrets/private.pem:ro
-      - tiger-state:/data/state
-    depends_on:
-      redis:
-        condition: service_healthy
-    environment:
-      - TIGER_PRIVATE_KEY_PATH=/secrets/private.pem
-      - TIGER_STATE_DIR=/data/state
-      - MCP_TRANSPORT=streamable-http
-      - REDIS_URL=redis://redis:6379/0
-      - TIGER_EVENTS_ENABLED=true
-
   # ---- Zaza MCP Server (streamable-http for consumer access) ----
   zaza:
     build:
@@ -72,21 +38,12 @@ services:
       context: .
       target: consumer
     depends_on:
-      redis:
-        condition: service_healthy
-      tiger-mcp:
-        condition: service_started
       zaza:
         condition: service_started
+    env_file: .env
     environment:
-      - REDIS_URL=redis://redis:6379/0
-      - TIGER_MCP_URL=http://tiger-mcp:8000/mcp
       - ZAZA_MCP_URL=http://zaza:8100/mcp
-      - CONSUMER_GROUP=trade-executor
-      - CONSUMER_NAME=executor-1
     restart: unless-stopped
 
 volumes:
-  redis-data:
-  tiger-state:
   zaza-cache:
