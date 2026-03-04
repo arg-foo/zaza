@@ -7,7 +7,7 @@ from unittest.mock import patch
 
 import pytest
 
-from zaza.consumer.config import ConsumerSettings
+from zaza_consumer.config import ConsumerSettings
 
 
 class TestConsumerSettingsDefaults:

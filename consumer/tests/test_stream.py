@@ -8,8 +8,8 @@ from unittest.mock import AsyncMock
 import orjson
 import pytest
 
-from zaza.consumer.config import ConsumerSettings
-from zaza.consumer.stream import _read_and_process
+from zaza_consumer.config import ConsumerSettings
+from zaza_consumer.stream import _read_and_process
 
 
 @pytest.fixture

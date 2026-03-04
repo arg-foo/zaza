@@ -2,7 +2,7 @@
 
 Usage::
 
-    python -m zaza.consumer
+    python -m zaza_consumer
 
 Connects to Tiger and Zaza MCP servers, reconciles plan state on startup,
 then consumes the Redis transaction stream and manages the order lifecycle.
@@ -15,14 +15,14 @@ from typing import Any
 
 import structlog
 
-from zaza.consumer.config import ConsumerSettings
-from zaza.consumer.fill_manager import handle_entry_fill
-from zaza.consumer.handler import TransactionHandler
-from zaza.consumer.mcp_clients import McpClients
-from zaza.consumer.oco import handle_stop_fill, handle_tp_fill
-from zaza.consumer.plan_index import PlanIndex, PlanLocks
-from zaza.consumer.reconciler import reconcile_on_startup, rth_scan_loop
-from zaza.consumer.stream import consume_stream
+from zaza_consumer.config import ConsumerSettings
+from zaza_consumer.fill_manager import handle_entry_fill
+from zaza_consumer.handler import TransactionHandler
+from zaza_consumer.mcp_clients import McpClients
+from zaza_consumer.oco import handle_stop_fill, handle_tp_fill
+from zaza_consumer.plan_index import PlanIndex, PlanLocks
+from zaza_consumer.reconciler import reconcile_on_startup, rth_scan_loop
+from zaza_consumer.stream import consume_stream
 
 logger = structlog.get_logger(__name__)
 

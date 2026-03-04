@@ -20,16 +20,16 @@ from typing import Any
 import orjson
 import structlog
 
-from zaza.consumer.config import ConsumerSettings
-from zaza.consumer.fill_manager import (
+from zaza_consumer.config import ConsumerSettings
+from zaza_consumer.fill_manager import (
     _FILLED_QTY_RE,
     _get_order_id,
     _is_numeric_order_id,
     handle_entry_fill,
 )
-from zaza.consumer.oco import handle_stop_fill, handle_tp_fill
-from zaza.consumer.plan_index import PlanIndex, PlanLocks
-from zaza.consumer.rth import is_rth_open
+from zaza_consumer.oco import handle_stop_fill, handle_tp_fill
+from zaza_consumer.plan_index import PlanIndex, PlanLocks
+from zaza_consumer.rth import is_rth_open
 
 logger = structlog.get_logger(__name__)
 

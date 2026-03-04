@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import asyncio
 
-from zaza.consumer.plan_index import PlanIndex, PlanLocks
+from zaza_consumer.plan_index import PlanIndex, PlanLocks
 
 PLAN_XML_WITH_NUMERIC_IDS = '''
 <trade-plan ticker="AAPL" generated="2026-02-24 14:30 UTC">

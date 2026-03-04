@@ -5,8 +5,9 @@
 #   1. deps      — Install Python dependencies with uv
 #   2. playwright — Install Chromium browser for browser tools
 #   3. runtime   — Final production image (MCP server)
-#   4. consumer  — Lightweight image (trade execution consumer)
-#   5. dev       — Development image with test dependencies
+#   4. dev       — Development image with test dependencies
+#
+# The consumer service has its own Dockerfile at consumer/.
 #
 # Pattern follows official Astral uv Docker guide:
 # https://docs.astral.sh/uv/guides/integration/docker/
@@ -90,23 +91,7 @@ ENV ZAZA_CACHE_DIR=/cache
 CMD ["python", "-m", "zaza.server"]
 
 # ----------------------------------------------------------
-# Stage 4: Consumer image (no Playwright/Chromium needed)
-# ----------------------------------------------------------
-FROM python:3.12-slim AS consumer
-
-WORKDIR /app
-
-# Copy Python venv from deps stage (includes project + all dependencies)
-COPY --from=deps /app/.venv /app/.venv
-COPY src/ src/
-
-ENV PATH="/app/.venv/bin:$PATH"
-ENV PYTHONUNBUFFERED=1
-
-CMD ["python", "-m", "zaza.consumer"]
-
-# ----------------------------------------------------------
-# Stage 5: Development image (extends runtime)
+# Stage 4: Development image (extends runtime)
 # ----------------------------------------------------------
 FROM runtime AS dev
 

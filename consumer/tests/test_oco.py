@@ -6,12 +6,12 @@ from unittest.mock import AsyncMock
 
 import orjson
 
-from zaza.consumer.oco import (
+from zaza_consumer.oco import (
     _get_order_id_from_xml,
     handle_stop_fill,
     handle_tp_fill,
 )
-from zaza.consumer.plan_index import PlanIndex
+from zaza_consumer.plan_index import PlanIndex
 
 # ---------------------------------------------------------------------------
 # Sample XML fixtures

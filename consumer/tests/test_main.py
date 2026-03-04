@@ -7,7 +7,7 @@ from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
-from zaza.consumer.plan_index import PlanLocks
+from zaza_consumer.plan_index import PlanLocks
 
 # ---------------------------------------------------------------------------
 # Tests for main()
@@ -24,18 +24,18 @@ class TestMainWiring:
         mock_mcp.close = AsyncMock()
 
         with (
-            patch("zaza.consumer.__main__.ConsumerSettings") as mock_settings_cls,
-            patch("zaza.consumer.__main__.McpClients", return_value=mock_mcp),
-            patch("zaza.consumer.__main__.PlanIndex") as mock_index_cls,
+            patch("zaza_consumer.__main__.ConsumerSettings") as mock_settings_cls,
+            patch("zaza_consumer.__main__.McpClients", return_value=mock_mcp),
+            patch("zaza_consumer.__main__.PlanIndex") as mock_index_cls,
             patch(
-                "zaza.consumer.__main__.reconcile_on_startup",
+                "zaza_consumer.__main__.reconcile_on_startup",
                 new_callable=AsyncMock,
             ) as mock_reconcile,
             patch(
-                "zaza.consumer.__main__.consume_stream", new_callable=AsyncMock,
+                "zaza_consumer.__main__.consume_stream", new_callable=AsyncMock,
             ) as mock_consume,
             patch(
-                "zaza.consumer.__main__.rth_scan_loop", new_callable=AsyncMock,
+                "zaza_consumer.__main__.rth_scan_loop", new_callable=AsyncMock,
             ) as mock_rth_loop,
         ):
             mock_settings = MagicMock()
@@ -51,7 +51,7 @@ class TestMainWiring:
             # (it will be wrapped in create_task)
             mock_rth_loop.return_value = None
 
-            from zaza.consumer.__main__ import main
+            from zaza_consumer.__main__ import main
 
             await main()
 
@@ -79,13 +79,13 @@ class TestMainWiring:
             captured_handler = handler
 
         with (
-            patch("zaza.consumer.__main__.ConsumerSettings") as mock_settings_cls,
-            patch("zaza.consumer.__main__.McpClients", return_value=mock_mcp),
-            patch("zaza.consumer.__main__.PlanIndex") as mock_index_cls,
-            patch("zaza.consumer.__main__.reconcile_on_startup", new_callable=AsyncMock),
-            patch("zaza.consumer.__main__.consume_stream", side_effect=_capture_consume),
-            patch("zaza.consumer.__main__.rth_scan_loop", new_callable=AsyncMock),
-            patch("zaza.consumer.__main__.TransactionHandler") as mock_handler_cls,
+            patch("zaza_consumer.__main__.ConsumerSettings") as mock_settings_cls,
+            patch("zaza_consumer.__main__.McpClients", return_value=mock_mcp),
+            patch("zaza_consumer.__main__.PlanIndex") as mock_index_cls,
+            patch("zaza_consumer.__main__.reconcile_on_startup", new_callable=AsyncMock),
+            patch("zaza_consumer.__main__.consume_stream", side_effect=_capture_consume),
+            patch("zaza_consumer.__main__.rth_scan_loop", new_callable=AsyncMock),
+            patch("zaza_consumer.__main__.TransactionHandler") as mock_handler_cls,
         ):
             mock_settings = MagicMock()
             mock_settings.tiger_mcp_url = "http://tiger"
@@ -96,7 +96,7 @@ class TestMainWiring:
             mock_index = MagicMock()
             mock_index_cls.return_value = mock_index
 
-            from zaza.consumer.__main__ import main
+            from zaza_consumer.__main__ import main
 
             await main()
 
@@ -116,12 +116,12 @@ class TestMainCleanup:
         mock_mcp.close = AsyncMock()
 
         with (
-            patch("zaza.consumer.__main__.ConsumerSettings") as mock_settings_cls,
-            patch("zaza.consumer.__main__.McpClients", return_value=mock_mcp),
-            patch("zaza.consumer.__main__.PlanIndex"),
-            patch("zaza.consumer.__main__.reconcile_on_startup", new_callable=AsyncMock),
-            patch("zaza.consumer.__main__.consume_stream", new_callable=AsyncMock) as mock_consume,
-            patch("zaza.consumer.__main__.rth_scan_loop", new_callable=AsyncMock),
+            patch("zaza_consumer.__main__.ConsumerSettings") as mock_settings_cls,
+            patch("zaza_consumer.__main__.McpClients", return_value=mock_mcp),
+            patch("zaza_consumer.__main__.PlanIndex"),
+            patch("zaza_consumer.__main__.reconcile_on_startup", new_callable=AsyncMock),
+            patch("zaza_consumer.__main__.consume_stream", new_callable=AsyncMock) as mock_consume,
+            patch("zaza_consumer.__main__.rth_scan_loop", new_callable=AsyncMock),
         ):
             mock_settings = MagicMock()
             mock_settings.tiger_mcp_url = "http://tiger"
@@ -131,7 +131,7 @@ class TestMainCleanup:
 
             mock_consume.side_effect = RuntimeError("Redis connection lost")
 
-            from zaza.consumer.__main__ import main
+            from zaza_consumer.__main__ import main
 
             with pytest.raises(RuntimeError, match="Redis connection lost"):
                 await main()
@@ -156,12 +156,12 @@ class TestMainCleanup:
             await rth_started.wait()
 
         with (
-            patch("zaza.consumer.__main__.ConsumerSettings") as mock_settings_cls,
-            patch("zaza.consumer.__main__.McpClients", return_value=mock_mcp),
-            patch("zaza.consumer.__main__.PlanIndex"),
-            patch("zaza.consumer.__main__.reconcile_on_startup", new_callable=AsyncMock),
-            patch("zaza.consumer.__main__.consume_stream", side_effect=_short_consume),
-            patch("zaza.consumer.__main__.rth_scan_loop", side_effect=_long_running_rth),
+            patch("zaza_consumer.__main__.ConsumerSettings") as mock_settings_cls,
+            patch("zaza_consumer.__main__.McpClients", return_value=mock_mcp),
+            patch("zaza_consumer.__main__.PlanIndex"),
+            patch("zaza_consumer.__main__.reconcile_on_startup", new_callable=AsyncMock),
+            patch("zaza_consumer.__main__.consume_stream", side_effect=_short_consume),
+            patch("zaza_consumer.__main__.rth_scan_loop", side_effect=_long_running_rth),
         ):
             mock_settings = MagicMock()
             mock_settings.tiger_mcp_url = "http://tiger"
@@ -169,7 +169,7 @@ class TestMainCleanup:
             mock_settings.order_delay_ms = 500
             mock_settings_cls.from_env.return_value = mock_settings
 
-            from zaza.consumer.__main__ import main
+            from zaza_consumer.__main__ import main
 
             # Should complete without hanging (RTH task cancelled)
             await asyncio.wait_for(main(), timeout=5.0)

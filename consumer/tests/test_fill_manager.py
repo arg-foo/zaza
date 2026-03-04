@@ -8,7 +8,7 @@ from unittest.mock import AsyncMock
 import orjson
 import pytest
 
-from zaza.consumer.fill_manager import (
+from zaza_consumer.fill_manager import (
     _extract_order_id_from_result,
     _get_order_id,
     _is_numeric_order_id,
@@ -18,7 +18,7 @@ from zaza.consumer.fill_manager import (
     _update_quantity_in_xml,
     handle_entry_fill,
 )
-from zaza.consumer.plan_index import PlanIndex
+from zaza_consumer.plan_index import PlanIndex
 
 # ---------------------------------------------------------------------------
 # Sample XML fixtures
