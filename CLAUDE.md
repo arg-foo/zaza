@@ -204,6 +204,10 @@ Zaza is a financial research MCP server (66 tools, 11 domains) that extends Clau
   </technical-design>
 </always>
 
+<important>
+  `tiger-brokers-cash-mcp` directory is only used for reference. It resides in another repo and is another project. NEVER write to it. DO NOT consider it as part of the project, only reference schema and endpoints to communicate with it if needed.
+</important>
+
 <rtk-instructions>
   # RTK (Rust Token Killer) - Token-Optimized Commands
 

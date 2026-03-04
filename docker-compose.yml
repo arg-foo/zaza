@@ -1,27 +1,45 @@
-# Zaza MCP Server — Docker Compose
+# Zaza Platform — Docker Compose
+#
+# Services:
+#   zaza     — Zaza MCP server (financial research tools)
+#   consumer — Trade execution consumer (order lifecycle automation)
+#
+# Redis and Tiger MCP are managed externally (tiger-brokers-cash-mcp/).
+# The consumer connects to them via REDIS_URL and TIGER_MCP_URL env vars.
 #
 # Usage:
-#   docker compose up -d          # Start both services
-#   docker compose ps             # Check status
-#   docker compose down           # Stop both services
-#   docker compose logs zaza      # View Zaza logs
+#   docker compose up -d              # Start all services
+#   docker compose ps                 # Check status
+#   docker compose down               # Stop all services
+#   docker compose logs consumer -f   # Follow consumer logs
 
 services:
+  # ---- Zaza MCP Server (streamable-http for consumer access) ----
   zaza:
     build:
       context: .
       target: runtime
-    # stdin_open (-i) is required for MCP stdio transport —
-    # Claude Code sends JSON-RPC requests over stdin
-    stdin_open: true
+    ports:
+      - "${ZAZA_MCP_PORT:-8100}:8100"
     volumes:
-      # Persistent cache across container restarts (SQLite-backed diskcache)
       - zaza-cache:/cache
-      # Persistent trade plans — bind mount shares with host ~/.zaza/trades
       - ~/.zaza/trades:/trades
     environment:
       - ZAZA_TRADES_DIR=/trades
-    env_file: .env                # REDDIT_CLIENT_ID, FRED_API_KEY, etc.
+    env_file: .env
+
+  # ---- Trade Execution Consumer ----
+  consumer:
+    build:
+      context: .
+      target: consumer
+    depends_on:
+      zaza:
+        condition: service_started
+    env_file: .env
+    environment:
+      - ZAZA_MCP_URL=http://zaza:8100/mcp
+    restart: unless-stopped
 
 volumes:
   zaza-cache:

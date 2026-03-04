@@ -98,3 +98,25 @@ def has_reddit_credentials() -> bool:
 def has_fred_key() -> bool:
     """Check if FRED API key is configured."""
     return bool(os.getenv("FRED_API_KEY"))
+
+
+# ---------------------------------------------------------------------------
+# MCP Transport settings
+# ---------------------------------------------------------------------------
+
+ZAZA_MCP_TRANSPORT = os.getenv("ZAZA_MCP_TRANSPORT", "stdio")
+ZAZA_MCP_HOST = os.getenv("ZAZA_MCP_HOST", "0.0.0.0")
+_ZAZA_MCP_PORT_RAW = os.getenv("ZAZA_MCP_PORT", "8100")
+try:
+    ZAZA_MCP_PORT = int(_ZAZA_MCP_PORT_RAW)
+except ValueError:
+    raise ValueError(f"ZAZA_MCP_PORT must be a valid integer, got {_ZAZA_MCP_PORT_RAW!r}") from None
+
+_VALID_TRANSPORTS = {"stdio", "streamable-http"}
+if ZAZA_MCP_TRANSPORT not in _VALID_TRANSPORTS:
+    raise ValueError(
+        f"ZAZA_MCP_TRANSPORT must be one of {sorted(_VALID_TRANSPORTS)}, "
+        f"got {ZAZA_MCP_TRANSPORT!r}"
+    )
+if not (1 <= ZAZA_MCP_PORT <= 65535):
+    raise ValueError(f"ZAZA_MCP_PORT must be in range 1-65535, got {ZAZA_MCP_PORT}")
