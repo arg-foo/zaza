@@ -126,8 +126,8 @@ async def _read_and_process(
                     return
 
                 try:
-                    event = TransactionEvent.from_redis_fields(fields)
-                except (ValidationError, ValueError, UnicodeDecodeError) as exc:
+                    event = TransactionEvent.model_validate_json(fields[b"data"])
+                except (ValidationError, ValueError, UnicodeDecodeError, KeyError) as exc:
                     # Malformed message — ACK to prevent infinite redelivery
                     logger.error(
                         "message_deserialization_error",
