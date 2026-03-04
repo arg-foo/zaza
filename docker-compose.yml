@@ -26,10 +26,6 @@ services:
       - ~/.zaza/trades:/trades
     environment:
       - ZAZA_TRADES_DIR=/trades
-      - ZAZA_CACHE_DIR=/cache
-      - ZAZA_MCP_TRANSPORT=streamable-http
-      - ZAZA_MCP_HOST=0.0.0.0
-      - ZAZA_MCP_PORT=8100
     env_file: .env
 
   # ---- Trade Execution Consumer ----
