@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """UserPromptSubmit hook: injects portfolio context into every prompt.
 
-Connects to Zaza MCP (trade plans) via stdio and Tiger MCP (account/positions/orders)
+Connects to Zaza MCP (trade plans) and Tiger MCP (account/positions/orders)
 via streamable-http, gathers portfolio state, cross-references trade plan orders with
 live order statuses, and outputs structured XML to stdout for Claude Code
 to inject into the conversation context.
@@ -19,17 +19,10 @@ from datetime import datetime, timezone
 from xml.etree import ElementTree as ET
 
 from mcp import ClientSession
-from mcp.client.stdio import StdioServerParameters, stdio_client
 from mcp.client.streamable_http import streamable_http_client
 
 # --- MCP Server Parameters ---
-ZAZA_CONTAINER = os.environ.get("ZAZA_CONTAINER", "zaza-zaza-1")
-
-ZAZA_SERVER_PARAMS = StdioServerParameters(
-    command="docker",
-    args=["exec", "-i", ZAZA_CONTAINER, "python", "-m", "zaza.server"],
-)
-
+ZAZA_MCP_URL = os.environ.get("ZAZA_MCP_URL", "http://localhost:8100/mcp")
 TIGER_MCP_URL = os.environ.get("TIGER_MCP_URL", "http://localhost:8000/mcp")
 
 
@@ -641,7 +634,7 @@ async def fetch_all() -> dict:
                 return await fetch_tiger_data(session)
 
     async def _get_zaza() -> list[dict]:
-        async with stdio_client(ZAZA_SERVER_PARAMS) as (r, w):
+        async with streamable_http_client(ZAZA_MCP_URL) as (r, w, _):
             async with ClientSession(r, w) as session:
                 await session.initialize()
                 return await fetch_zaza_data(session)
