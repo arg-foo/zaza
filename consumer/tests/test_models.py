@@ -5,7 +5,7 @@ from __future__ import annotations
 import orjson
 
 from zaza_consumer.models import (
-    OrderEvent,
+    OrderStatusEvent,
     OrderStatusPayload,
     TransactionEvent,
     TransactionPayload,
@@ -41,7 +41,7 @@ class TestTransactionPayload:
         assert p.filled_quantity == 50
 
     def test_all_fields_optional(self) -> None:
-        """All fields default to None — empty payload is valid."""
+        """All fields default to None -- empty payload is valid."""
         p = TransactionPayload()
         assert p.order_id is None
         assert p.symbol is None
@@ -65,6 +65,16 @@ class TestTransactionPayload:
         """orderId is a string (matches broker protobuf format)."""
         p = TransactionPayload(order_id="12345")
         assert isinstance(p.order_id, str)
+
+    def test_extra_fields_ignored(self) -> None:
+        """Unknown broker fields (future protobuf additions) are silently ignored."""
+        raw = b'{"orderId": "1", "symbol": "AAPL", "unknownFutureField": 42}'
+        p = TransactionPayload.model_validate_json(raw)
+        assert p.order_id == "1"
+        assert p.symbol == "AAPL"
+        # The unknown field should not be stored on the model
+        assert not hasattr(p, "unknownFutureField")
+        assert not hasattr(p, "unknown_future_field")
 
     def test_all_alias_fields_present(self) -> None:
         """Ensure all aliased fields round-trip correctly."""
@@ -122,6 +132,15 @@ class TestOrderStatusPayload:
         assert p.order_type is None
         assert p.status is None
 
+    def test_extra_fields_ignored(self) -> None:
+        """Unknown broker fields (future protobuf additions) are silently ignored."""
+        raw = b'{"symbol": "AAPL", "orderType": "LMT", "unknownFutureField": 42}'
+        p = OrderStatusPayload.model_validate_json(raw)
+        assert p.symbol == "AAPL"
+        assert p.order_type == "LMT"
+        assert not hasattr(p, "unknownFutureField")
+        assert not hasattr(p, "unknown_future_field")
+
     def test_boolean_fields(self) -> None:
         p = OrderStatusPayload(
             is_long=True,
@@ -145,18 +164,21 @@ class TestOrderStatusPayload:
 class TestTransactionEvent:
     """Tests for TransactionEvent envelope model."""
 
-    def test_from_redis_fields_valid(self) -> None:
-        """Deserializes a well-formed Redis stream message."""
-        payload_json = orjson.dumps(
-            {"orderId": "12345", "symbol": "AAPL", "filledQuantity": 50}
+    def test_validate_from_json(self) -> None:
+        """Deserializes a well-formed event JSON (single data field from Redis)."""
+        event_json = orjson.dumps(
+            {
+                "account": "DU12345",
+                "timestamp": "1709000000000",
+                "received_at": "2026-01-01T00:00:00Z",
+                "payload": {
+                    "orderId": "12345",
+                    "symbol": "AAPL",
+                    "filledQuantity": 50,
+                },
+            }
         )
-        fields: dict[bytes, bytes] = {
-            b"account": b"DU12345",
-            b"timestamp": b"1709000000000",
-            b"received_at": b"2026-01-01T00:00:00Z",
-            b"payload": payload_json,
-        }
-        event = TransactionEvent.from_redis_fields(fields)
+        event = TransactionEvent.model_validate_json(event_json)
         assert event.account == "DU12345"
         assert event.timestamp == "1709000000000"
         assert event.received_at == "2026-01-01T00:00:00Z"
@@ -164,77 +186,126 @@ class TestTransactionEvent:
         assert event.payload.symbol == "AAPL"
         assert event.payload.filled_quantity == 50
 
-    def test_from_redis_fields_missing_payload(self) -> None:
-        """Missing payload field produces empty TransactionPayload."""
-        fields: dict[bytes, bytes] = {
-            b"account": b"DU12345",
-            b"received_at": b"2026-01-01T00:00:00Z",
-        }
-        event = TransactionEvent.from_redis_fields(fields)
-        assert event.payload.order_id is None
-        assert event.payload.symbol is None
+    def test_received_at_is_str(self) -> None:
+        """received_at is str, not datetime (consumer receives string from Redis)."""
+        event = TransactionEvent(
+            account="DU12345",
+            received_at="2026-01-01T00:00:00Z",
+            payload=TransactionPayload(),
+        )
+        assert isinstance(event.received_at, str)
+        assert event.received_at == "2026-01-01T00:00:00Z"
 
-    def test_from_redis_fields_null_timestamp(self) -> None:
-        """Empty timestamp bytes become None."""
-        fields: dict[bytes, bytes] = {
-            b"account": b"DU12345",
-            b"timestamp": b"",
-            b"received_at": b"2026-01-01T00:00:00Z",
-            b"payload": b"{}",
-        }
-        event = TransactionEvent.from_redis_fields(fields)
+    def test_null_timestamp(self) -> None:
+        """Null timestamp is allowed."""
+        event_json = orjson.dumps(
+            {
+                "account": "DU12345",
+                "timestamp": None,
+                "received_at": "2026-01-01T00:00:00Z",
+                "payload": {},
+            }
+        )
+        event = TransactionEvent.model_validate_json(event_json)
+        assert event.timestamp is None
+
+    def test_missing_timestamp_defaults_to_none(self) -> None:
+        """Omitted timestamp defaults to None."""
+        event_json = orjson.dumps(
+            {
+                "account": "DU12345",
+                "received_at": "2026-01-01T00:00:00Z",
+                "payload": {},
+            }
+        )
+        event = TransactionEvent.model_validate_json(event_json)
         assert event.timestamp is None
 
     def test_payload_is_transaction_payload_instance(self) -> None:
         """Payload is deserialized as TransactionPayload, not raw dict."""
-        fields: dict[bytes, bytes] = {
-            b"account": b"DU12345",
-            b"received_at": b"2026-01-01T00:00:00Z",
-            b"payload": orjson.dumps({"orderId": "1"}),
-        }
-        event = TransactionEvent.from_redis_fields(fields)
+        event_json = orjson.dumps(
+            {
+                "account": "DU12345",
+                "received_at": "2026-01-01T00:00:00Z",
+                "payload": {"orderId": "1"},
+            }
+        )
+        event = TransactionEvent.model_validate_json(event_json)
         assert isinstance(event.payload, TransactionPayload)
 
-
-# ---------------------------------------------------------------------------
-# OrderEvent envelope
-# ---------------------------------------------------------------------------
-
-
-class TestOrderEvent:
-    """Tests for OrderEvent envelope model."""
-
-    def test_from_redis_fields_valid(self) -> None:
-        payload_json = orjson.dumps(
-            {"symbol": "AAPL", "orderType": "LMT", "status": "FILLED"}
+    def test_empty_payload_produces_default_fields(self) -> None:
+        """Empty payload dict produces TransactionPayload with all None fields."""
+        event_json = orjson.dumps(
+            {
+                "account": "DU12345",
+                "received_at": "2026-01-01T00:00:00Z",
+                "payload": {},
+            }
         )
-        fields: dict[bytes, bytes] = {
-            b"account": b"DU12345",
-            b"timestamp": b"1709000000000",
-            b"received_at": b"2026-01-01T00:00:00Z",
-            b"payload": payload_json,
-        }
-        event = OrderEvent.from_redis_fields(fields)
+        event = TransactionEvent.model_validate_json(event_json)
+        assert event.payload.order_id is None
+        assert event.payload.symbol is None
+
+
+# ---------------------------------------------------------------------------
+# OrderStatusEvent envelope
+# ---------------------------------------------------------------------------
+
+
+class TestOrderStatusEvent:
+    """Tests for OrderStatusEvent envelope model."""
+
+    def test_validate_from_json(self) -> None:
+        """Deserializes a well-formed event JSON."""
+        event_json = orjson.dumps(
+            {
+                "account": "DU12345",
+                "timestamp": "1709000000000",
+                "received_at": "2026-01-01T00:00:00Z",
+                "payload": {
+                    "symbol": "AAPL",
+                    "orderType": "LMT",
+                    "status": "FILLED",
+                },
+            }
+        )
+        event = OrderStatusEvent.model_validate_json(event_json)
         assert event.account == "DU12345"
         assert isinstance(event.payload, OrderStatusPayload)
         assert event.payload.symbol == "AAPL"
         assert event.payload.order_type == "LMT"
         assert event.payload.status == "FILLED"
 
-    def test_from_redis_fields_missing_payload(self) -> None:
-        fields: dict[bytes, bytes] = {
-            b"account": b"DU12345",
-            b"received_at": b"2026-01-01T00:00:00Z",
-        }
-        event = OrderEvent.from_redis_fields(fields)
+    def test_received_at_is_str(self) -> None:
+        """received_at is str, not datetime."""
+        event = OrderStatusEvent(
+            account="DU12345",
+            received_at="2026-01-01T00:00:00Z",
+            payload=OrderStatusPayload(),
+        )
+        assert isinstance(event.received_at, str)
+
+    def test_empty_payload(self) -> None:
+        """Empty payload produces OrderStatusPayload with all None fields."""
+        event_json = orjson.dumps(
+            {
+                "account": "DU12345",
+                "received_at": "2026-01-01T00:00:00Z",
+                "payload": {},
+            }
+        )
+        event = OrderStatusEvent.model_validate_json(event_json)
         assert event.payload.symbol is None
 
-    def test_from_redis_fields_null_timestamp(self) -> None:
-        fields: dict[bytes, bytes] = {
-            b"account": b"DU12345",
-            b"timestamp": b"",
-            b"received_at": b"2026-01-01T00:00:00Z",
-            b"payload": b"{}",
-        }
-        event = OrderEvent.from_redis_fields(fields)
+    def test_null_timestamp(self) -> None:
+        """Null timestamp is allowed."""
+        event_json = orjson.dumps(
+            {
+                "account": "DU12345",
+                "timestamp": None,
+                "received_at": "2026-01-01T00:00:00Z",
+                "payload": {},
+            }
+        )
+        event = OrderStatusEvent.model_validate_json(event_json)
         assert event.timestamp is None

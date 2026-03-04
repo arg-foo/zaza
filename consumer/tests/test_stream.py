@@ -22,13 +22,18 @@ def settings():
     )
 
 
-def _make_envelope(payload_dict: dict) -> dict[bytes, bytes]:
-    """Build a Redis stream fields dict matching the publisher's envelope format."""
-    return {
-        b"account": b"DU12345",
-        b"received_at": b"2026-01-01T00:00:00Z",
-        b"payload": orjson.dumps(payload_dict),
+def _make_stream_fields(payload_dict: dict) -> dict[bytes, bytes]:
+    """Build Redis stream fields matching the publisher's single-data-field format.
+
+    The publisher now sends one ``data`` field containing the full event JSON
+    (account, timestamp, received_at, payload).
+    """
+    event = {
+        "account": "DU12345",
+        "received_at": "2026-01-01T00:00:00Z",
+        "payload": payload_dict,
     }
+    return {b"data": orjson.dumps(event)}
 
 
 class TestReadAndProcess:
@@ -41,7 +46,7 @@ class TestReadAndProcess:
         event_data = {"orderId": "123", "symbol": "AAPL", "filledQuantity": 50}
 
         msg_id = b"1234567890-0"
-        fields = _make_envelope(event_data)
+        fields = _make_stream_fields(event_data)
 
         # First call returns messages, second call returns empty (to end pending phase)
         redis.xreadgroup = AsyncMock(side_effect=[
@@ -102,7 +107,7 @@ class TestReadAndProcess:
         redis = AsyncMock()
 
         msg_id = b"1234567890-0"
-        fields = _make_envelope({"orderId": "1"})
+        fields = _make_stream_fields({"orderId": "1"})
 
         redis.xreadgroup = AsyncMock(side_effect=[
             [(b"stream", [(msg_id, fields)])],
@@ -201,8 +206,8 @@ class TestReadAndProcess:
 
         redis.xreadgroup = AsyncMock(side_effect=[
             [(b"stream", [
-                (msg_id_1, _make_envelope({"orderId": "1", "symbol": "AAPL"})),
-                (msg_id_2, _make_envelope({"orderId": "2", "symbol": "MSFT"})),
+                (msg_id_1, _make_stream_fields({"orderId": "1", "symbol": "AAPL"})),
+                (msg_id_2, _make_stream_fields({"orderId": "2", "symbol": "MSFT"})),
             ])],
             [],  # End pending phase
         ])
@@ -230,16 +235,16 @@ class TestReadAndProcess:
         assert p2.order_id == "2"
         assert redis.xack.call_count == 2
 
-    async def test_missing_payload_field(
+    async def test_missing_data_field_acks_and_skips(
         self, settings: ConsumerSettings
     ) -> None:
-        """If message has no 'payload' field, handler receives empty TransactionPayload."""
+        """If message has no 'data' field, KeyError is raised -- ACK to prevent redelivery."""
         handler = AsyncMock()
         redis = AsyncMock()
 
         msg_id = b"1234567890-0"
-        # Fields exist but no b"payload" key
-        fields = {b"account": b"DU12345", b"received_at": b"2026-01-01T00:00:00Z"}
+        # Fields exist but no b"data" key -- raises KeyError (clear error message)
+        fields: dict[bytes, bytes] = {b"account": b"DU12345"}
 
         redis.xreadgroup = AsyncMock(side_effect=[
             [(b"stream", [(msg_id, fields)])],
@@ -260,11 +265,12 @@ class TestReadAndProcess:
             shutdown=shutdown,
         )
 
-        handler.assert_called_once()
-        payload = handler.call_args[0][0]
-        assert isinstance(payload, TransactionPayload)
-        assert payload.order_id is None
-        redis.xack.assert_called_once()
+        # Handler must NOT be called (KeyError for missing b"data" key)
+        handler.assert_not_called()
+        # Message MUST be ACKed to prevent infinite redelivery
+        redis.xack.assert_called_once_with(
+            "tiger:events:transaction", "trade-executor", msg_id
+        )
 
     async def test_full_envelope_format_unwrapped(
         self, settings: ConsumerSettings
@@ -274,17 +280,12 @@ class TestReadAndProcess:
         redis = AsyncMock()
 
         msg_id = b"1234567890-0"
-        fields = {
-            b"account": b"DU12345",
-            b"timestamp": b"1709000000000",
-            b"received_at": b"2026-01-01T00:00:00Z",
-            b"payload": orjson.dumps({
-                "orderId": "100",
-                "symbol": "TSLA",
-                "filledQuantity": 25,
-                "filledPrice": 250.0,
-            }),
-        }
+        fields = _make_stream_fields({
+            "orderId": "100",
+            "symbol": "TSLA",
+            "filledQuantity": 25,
+            "filledPrice": 250.0,
+        })
 
         redis.xreadgroup = AsyncMock(side_effect=[
             [(b"stream", [(msg_id, fields)])],
@@ -313,20 +314,52 @@ class TestReadAndProcess:
         assert payload.filled_quantity == 25
         assert payload.filled_price == 250.0
 
-    async def test_malformed_payload_json_acks_and_skips(
+    async def test_empty_data_field_acks_and_skips(
         self, settings: ConsumerSettings
     ) -> None:
-        """Malformed payload JSON should ACK (prevent redelivery) and skip handler."""
+        """Empty data field string should ACK and skip."""
         handler = AsyncMock()
         redis = AsyncMock()
 
         msg_id = b"1234567890-0"
-        # Invalid JSON in payload field
-        fields = {
-            b"account": b"DU12345",
-            b"received_at": b"2026-01-01T00:00:00Z",
-            b"payload": b"not-valid-json{{{",
-        }
+        fields = {b"data": b""}
+
+        redis.xreadgroup = AsyncMock(side_effect=[
+            [(b"stream", [(msg_id, fields)])],
+            [],  # End pending phase
+        ])
+        redis.xack = AsyncMock()
+
+        shutdown = asyncio.Event()
+
+        await _read_and_process(
+            redis=redis,
+            stream_key="tiger:events:transaction",
+            group="trade-executor",
+            consumer="executor-1",
+            settings=settings,
+            handler=handler,
+            read_id="0",
+            shutdown=shutdown,
+        )
+
+        # Handler must NOT be called (empty data is not valid JSON)
+        handler.assert_not_called()
+        # Message MUST be ACKed to prevent infinite redelivery
+        redis.xack.assert_called_once_with(
+            "tiger:events:transaction", "trade-executor", msg_id
+        )
+
+    async def test_malformed_data_json_acks_and_skips(
+        self, settings: ConsumerSettings
+    ) -> None:
+        """Malformed data JSON should ACK (prevent redelivery) and skip handler."""
+        handler = AsyncMock()
+        redis = AsyncMock()
+
+        msg_id = b"1234567890-0"
+        # Invalid JSON in data field
+        fields = {b"data": b"not-valid-json{{{"}
 
         redis.xreadgroup = AsyncMock(side_effect=[
             [(b"stream", [(msg_id, fields)])],

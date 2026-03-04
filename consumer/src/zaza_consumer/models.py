@@ -12,20 +12,11 @@ from __future__ import annotations
 
 from pydantic import BaseModel, ConfigDict, Field
 
-# ---------------------------------------------------------------------------
-# Payload models (auto-generated from JSON schemas)
-# ---------------------------------------------------------------------------
-
 
 class TransactionPayload(BaseModel):
-    """Payload for order transaction (execution/fill) events.
-
-    Fields mirror the ``OrderTransactionData`` protobuf exactly (camelCase).
-    All fields are optional because protobuf objects may omit any attribute.
-    """
-
-    model_config = ConfigDict(populate_by_name=True, extra="ignore")
-
+    model_config = ConfigDict(
+        populate_by_name=True,
+    )
     id: str | None = None
     order_id: str | None = Field(None, alias="orderId")
     account: str | None = None
@@ -45,15 +36,26 @@ class TransactionPayload(BaseModel):
     timestamp: int | None = None
 
 
+class TransactionEvent(BaseModel):
+    model_config = ConfigDict(
+        populate_by_name=True,
+    )
+    account: str = Field(..., description="Tiger Brokers account identifier.")
+    timestamp: str | None = Field(
+        None,
+        description="Event timestamp from Tiger Brokers (epoch milliseconds as string).",
+    )
+    received_at: str = Field(
+        ...,
+        description="ISO 8601 timestamp when the event was received by the subscriber.",
+    )
+    payload: TransactionPayload = Field(..., description="Transaction payload.")
+
+
 class OrderStatusPayload(BaseModel):
-    """Payload for order status change events.
-
-    Fields mirror the ``OrderStatusData`` protobuf exactly (camelCase).
-    All fields are optional because protobuf objects may omit any attribute.
-    """
-
-    model_config = ConfigDict(populate_by_name=True, extra="ignore")
-
+    model_config = ConfigDict(
+        populate_by_name=True,
+    )
     id: str | None = None
     account: str | None = None
     symbol: str | None = None
@@ -98,58 +100,17 @@ class OrderStatusPayload(BaseModel):
     gst: float | None = None
 
 
-# ---------------------------------------------------------------------------
-# Envelope models (manually defined — match Redis stream field layout)
-# ---------------------------------------------------------------------------
-
-
-class TransactionEvent(BaseModel):
-    """Full Redis stream event for transaction (execution/fill) changes.
-
-    The publisher writes four fields to the stream: ``account``,
-    ``timestamp``, ``received_at``, and ``payload`` (JSON-encoded string).
-    """
-
-    account: str
-    timestamp: str | None = None
-    received_at: str
-    payload: TransactionPayload
-
-    @classmethod
-    def from_redis_fields(cls, fields: dict[bytes, bytes]) -> TransactionEvent:
-        """Deserialize raw Redis stream fields into a typed event."""
-        payload = TransactionPayload.model_validate_json(
-            fields.get(b"payload", b"{}")
-        )
-        return cls(
-            account=fields.get(b"account", b"").decode(),
-            timestamp=fields.get(b"timestamp", b"").decode() or None,
-            received_at=fields.get(b"received_at", b"").decode(),
-            payload=payload,
-        )
-
-
-class OrderEvent(BaseModel):
-    """Full Redis stream event for order status changes.
-
-    Same envelope structure as ``TransactionEvent`` but with an
-    ``OrderStatusPayload``.  Ready for future order stream consumption.
-    """
-
-    account: str
-    timestamp: str | None = None
-    received_at: str
-    payload: OrderStatusPayload
-
-    @classmethod
-    def from_redis_fields(cls, fields: dict[bytes, bytes]) -> OrderEvent:
-        """Deserialize raw Redis stream fields into a typed event."""
-        payload = OrderStatusPayload.model_validate_json(
-            fields.get(b"payload", b"{}")
-        )
-        return cls(
-            account=fields.get(b"account", b"").decode(),
-            timestamp=fields.get(b"timestamp", b"").decode() or None,
-            received_at=fields.get(b"received_at", b"").decode(),
-            payload=payload,
-        )
+class OrderStatusEvent(BaseModel):
+    model_config = ConfigDict(
+        populate_by_name=True,
+    )
+    account: str = Field(..., description="Tiger Brokers account identifier.")
+    timestamp: str | None = Field(
+        None,
+        description="Event timestamp from Tiger Brokers (epoch milliseconds as string).",
+    )
+    received_at: str = Field(
+        ...,
+        description="ISO 8601 timestamp when the event was received by the subscriber.",
+    )
+    payload: OrderStatusPayload = Field(..., description="Order status payload.")
