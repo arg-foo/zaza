@@ -118,7 +118,8 @@ async def reconcile_on_startup(
 
     # 1. List active plans and fetch their XML
     plans_json = await mcp.list_trade_plans()
-    plans_list: list[dict[str, Any]] = orjson.loads(plans_json)
+    plans_response = orjson.loads(plans_json)
+    plans_list: list[dict[str, Any]] = plans_response.get("plans", [])
 
     if not plans_list:
         logger.info("reconcile_no_active_plans")
@@ -356,7 +357,8 @@ async def _run_rth_scan(
 ) -> None:
     """Scan active plans for expired protective orders and re-place them."""
     plans_json = await mcp.list_trade_plans()
-    plans_list: list[dict[str, Any]] = orjson.loads(plans_json)
+    plans_response = orjson.loads(plans_json)
+    plans_list: list[dict[str, Any]] = plans_response.get("plans", [])
 
     if not plans_list:
         return
