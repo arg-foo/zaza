@@ -31,8 +31,7 @@ services:
   # ---- Trade Execution Consumer ----
   consumer:
     build:
-      context: .
-      target: consumer
+      context: ./consumer
     depends_on:
       zaza:
         condition: service_started

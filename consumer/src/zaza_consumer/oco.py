@@ -14,7 +14,7 @@ from typing import Any
 import orjson
 import structlog
 
-from zaza.consumer.plan_index import PlanIndex
+from zaza_consumer.plan_index import PlanIndex
 
 logger = structlog.get_logger(__name__)
 

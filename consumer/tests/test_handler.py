@@ -6,8 +6,8 @@ from unittest.mock import AsyncMock
 
 import pytest
 
-from zaza.consumer.handler import TransactionHandler
-from zaza.consumer.plan_index import PlanIndex
+from zaza_consumer.handler import TransactionHandler
+from zaza_consumer.plan_index import PlanIndex
 
 
 @pytest.fixture

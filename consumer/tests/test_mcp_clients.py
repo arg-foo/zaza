@@ -7,7 +7,7 @@ from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
-from zaza.consumer.mcp_clients import McpClients
+from zaza_consumer.mcp_clients import McpClients
 
 # ---------------------------------------------------------------------------
 # Helpers
@@ -478,7 +478,7 @@ async def test_connect_failure_cleans_up_partial_connections() -> None:
     mock_stack.__aenter__ = AsyncMock(return_value=mock_stack)
 
     with patch(
-        "zaza.consumer.mcp_clients.AsyncExitStack",
+        "zaza_consumer.mcp_clients.AsyncExitStack",
         return_value=mock_stack,
     ):
         with pytest.raises(ConnectionError, match="Zaza server"):

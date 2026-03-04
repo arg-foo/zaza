@@ -10,7 +10,7 @@ import orjson
 import structlog
 from redis.asyncio import Redis
 
-from zaza.consumer.config import ConsumerSettings
+from zaza_consumer.config import ConsumerSettings
 
 logger = structlog.get_logger(__name__)
 
