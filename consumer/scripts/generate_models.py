@@ -19,7 +19,6 @@ Requires ``datamodel-code-generator`` (dev dependency).
 
 from __future__ import annotations
 
-import json
 import shutil
 import subprocess
 import sys
@@ -53,24 +52,6 @@ __all__ = [
 '''
 
 
-def _load_and_prepare_schema(schema_path: Path) -> dict:
-    """Load a JSON schema and strip ``format: date-time`` from ``received_at``.
-
-    The ``received_at`` field has ``"format": "date-time"`` in the schema which
-    causes datamodel-code-generator to produce ``AwareDatetime`` instead of ``str``.
-    Since the consumer receives this as a plain string from Redis JSON, we want ``str``.
-    """
-    with open(schema_path) as f:
-        schema = json.load(f)
-
-    # Strip format from received_at to keep it as str
-    props = schema.get("properties", {})
-    if "received_at" in props:
-        props["received_at"].pop("format", None)
-
-    return schema
-
-
 def main() -> None:
     """Generate models/ package from event JSON schemas."""
     if not SCHEMAS_DIR.exists():
@@ -85,18 +66,14 @@ def main() -> None:
             print(f"Error: schema not found: {p}", file=sys.stderr)
             sys.exit(1)
 
-    # Load schemas and preprocess (strip format: date-time from received_at)
-    tx_schema = _load_and_prepare_schema(tx_schema_path)
-    order_schema = _load_and_prepare_schema(order_schema_path)
-
     with tempfile.TemporaryDirectory() as tmp:
         tmp_in = Path(tmp) / "in"
         tmp_out = Path(tmp) / "out"
         tmp_in.mkdir()
 
-        # Write prepared schemas to temp input directory
-        (tmp_in / "transaction.json").write_text(json.dumps(tx_schema, indent=2))
-        (tmp_in / "order.json").write_text(json.dumps(order_schema, indent=2))
+        # Copy schemas to temp input directory
+        shutil.copy2(tx_schema_path, tmp_in / "transaction.json")
+        shutil.copy2(order_schema_path, tmp_in / "order.json")
 
         # Run datamodel-codegen CLI in directory mode
         result = subprocess.run(

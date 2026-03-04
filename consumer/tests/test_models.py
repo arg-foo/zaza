@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+from datetime import datetime, timezone
+
 import orjson
 
 from zaza_consumer.models import (
@@ -181,20 +183,21 @@ class TestTransactionEvent:
         event = TransactionEvent.model_validate_json(event_json)
         assert event.account == "DU12345"
         assert event.timestamp == "1709000000000"
-        assert event.received_at == "2026-01-01T00:00:00Z"
+        assert event.received_at == datetime(2026, 1, 1, tzinfo=timezone.utc)
         assert event.payload.order_id == "12345"
         assert event.payload.symbol == "AAPL"
         assert event.payload.filled_quantity == 50
 
-    def test_received_at_is_str(self) -> None:
-        """received_at is str, not datetime (consumer receives string from Redis)."""
+    def test_received_at_is_aware_datetime(self) -> None:
+        """received_at is parsed as AwareDatetime from ISO 8601 string."""
         event = TransactionEvent(
             account="DU12345",
             received_at="2026-01-01T00:00:00Z",
             payload=TransactionPayload(),
         )
-        assert isinstance(event.received_at, str)
-        assert event.received_at == "2026-01-01T00:00:00Z"
+        assert isinstance(event.received_at, datetime)
+        assert event.received_at.tzinfo is not None
+        assert event.received_at == datetime(2026, 1, 1, tzinfo=timezone.utc)
 
     def test_null_timestamp(self) -> None:
         """Null timestamp is allowed."""
@@ -276,14 +279,16 @@ class TestOrderStatusEvent:
         assert event.payload.order_type == "LMT"
         assert event.payload.status == "FILLED"
 
-    def test_received_at_is_str(self) -> None:
-        """received_at is str, not datetime."""
+    def test_received_at_is_aware_datetime(self) -> None:
+        """received_at is parsed as AwareDatetime from ISO 8601 string."""
         event = OrderStatusEvent(
             account="DU12345",
             received_at="2026-01-01T00:00:00Z",
             payload=OrderStatusPayload(),
         )
-        assert isinstance(event.received_at, str)
+        assert isinstance(event.received_at, datetime)
+        assert event.received_at.tzinfo is not None
+        assert event.received_at == datetime(2026, 1, 1, tzinfo=timezone.utc)
 
     def test_empty_payload(self) -> None:
         """Empty payload produces OrderStatusPayload with all None fields."""

@@ -3,7 +3,7 @@
 
 from __future__ import annotations
 
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import AwareDatetime, BaseModel, ConfigDict, Field
 
 
 class OrderStatusPayload(BaseModel):
@@ -74,7 +74,7 @@ class OrderStatusEvent(BaseModel):
         description="Event timestamp from Tiger Brokers (epoch milliseconds as string).",
         title="Timestamp",
     )
-    received_at: str = Field(
+    received_at: AwareDatetime = Field(
         ...,
         description="ISO 8601 timestamp when the event was received by the subscriber.",
         title="Received At",
