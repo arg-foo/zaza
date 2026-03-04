@@ -4,20 +4,21 @@ from __future__ import annotations
 
 import asyncio
 import signal
-from typing import Any, Awaitable, Callable
+from typing import Awaitable, Callable
 
-import orjson
 import structlog
+from pydantic import ValidationError
 from redis.asyncio import Redis
 
 from zaza_consumer.config import ConsumerSettings
+from zaza_consumer.models import TransactionEvent, TransactionPayload
 
 logger = structlog.get_logger(__name__)
 
 
 async def consume_stream(
     settings: ConsumerSettings,
-    handler: Callable[[dict[str, Any]], Awaitable[None]],
+    handler: Callable[[TransactionPayload], Awaitable[None]],
 ) -> None:
     """Main consumer loop. Connects to Redis, creates consumer group, processes messages.
 
@@ -89,7 +90,7 @@ async def _read_and_process(
     group: str,
     consumer: str,
     settings: ConsumerSettings,
-    handler: Callable[[dict[str, Any]], Awaitable[None]],
+    handler: Callable[[TransactionPayload], Awaitable[None]],
     read_id: str,
     shutdown: asyncio.Event,
 ) -> None:
@@ -125,11 +126,25 @@ async def _read_and_process(
                     return
 
                 try:
-                    # Fields is a dict of bytes->bytes
-                    # We expect a "data" field with JSON
-                    raw = fields.get(b"data", b"{}")
-                    event = orjson.loads(raw)
-                    await handler(event)
+                    event = TransactionEvent.from_redis_fields(fields)
+                except (ValidationError, ValueError, UnicodeDecodeError) as exc:
+                    # Malformed message — ACK to prevent infinite redelivery
+                    logger.error(
+                        "message_deserialization_error",
+                        msg_id=msg_id,
+                        error=str(exc),
+                    )
+                    await redis.xack(stream_key, group, msg_id)
+                    continue
+
+                try:
+                    logger.debug(
+                        "stream_message_received",
+                        msg_id=msg_id,
+                        account=event.account,
+                        received_at=event.received_at,
+                    )
+                    await handler(event.payload)
                     await redis.xack(stream_key, group, msg_id)
                     logger.debug("message_processed", msg_id=msg_id)
                 except Exception as exc:
@@ -137,5 +152,4 @@ async def _read_and_process(
                         "message_handler_error",
                         msg_id=msg_id,
                         error=str(exc),
-                        exc_info=True,
                     )

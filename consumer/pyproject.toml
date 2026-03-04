@@ -5,6 +5,7 @@ description = "Trade execution consumer for automated order lifecycle management
 requires-python = ">=3.12"
 dependencies = [
     "mcp>=1.20,<2.0",
+    "pydantic>=2.0,<3.0",
     "redis>=5.0,<6.0",
     "orjson>=3.9,<4.0",
     "structlog>=24.0,<26.0",
@@ -19,6 +20,7 @@ dev = [
     "time-machine>=2.0,<3.0",
     "ruff>=0.8,<1.0",
     "mypy>=1.7,<2.0",
+    "datamodel-code-generator>=0.26,<1.0",
 ]
 
 [build-system]
@@ -41,6 +43,12 @@ strict = false
 disallow_untyped_defs = true
 warn_return_any = true
 warn_unused_configs = true
+plugins = ["pydantic.mypy"]
+
+[tool.pydantic-mypy]
+init_forbid_extra = false
+init_typed = true
+warn_required_dynamic_aliases = true
 
 [tool.pytest.ini_options]
 asyncio_mode = "auto"

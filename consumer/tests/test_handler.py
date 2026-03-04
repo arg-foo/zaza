@@ -7,6 +7,7 @@ from unittest.mock import AsyncMock
 import pytest
 
 from zaza_consumer.handler import TransactionHandler
+from zaza_consumer.models import TransactionPayload
 from zaza_consumer.plan_index import PlanIndex
 
 
@@ -31,42 +32,42 @@ def handler(plan_index):
 
 class TestHandle:
     async def test_entry_fill_dispatched(self, handler: TransactionHandler) -> None:
-        event = {"orderId": 100, "symbol": "AAPL", "filledQuantity": 50}
+        event = TransactionPayload(order_id="100", symbol="AAPL", filled_quantity=50)
         await handler.handle(event)
         handler._on_entry_fill.assert_called_once_with(event, "plan-001")
         handler._on_stop_fill.assert_not_called()
         handler._on_tp_fill.assert_not_called()
 
     async def test_stop_fill_dispatched(self, handler: TransactionHandler) -> None:
-        event = {"orderId": 101, "symbol": "AAPL", "filledQuantity": 50}
+        event = TransactionPayload(order_id="101", symbol="AAPL", filled_quantity=50)
         await handler.handle(event)
         handler._on_stop_fill.assert_called_once_with(event, "plan-001")
 
     async def test_tp_fill_dispatched(self, handler: TransactionHandler) -> None:
-        event = {"orderId": 102, "symbol": "AAPL", "filledQuantity": 50}
+        event = TransactionPayload(order_id="102", symbol="AAPL", filled_quantity=50)
         await handler.handle(event)
         handler._on_tp_fill.assert_called_once_with(event, "plan-001")
 
     async def test_unknown_order_id_ignored(self, handler: TransactionHandler) -> None:
-        event = {"orderId": 999, "symbol": "AAPL", "filledQuantity": 50}
+        event = TransactionPayload(order_id="999", symbol="AAPL", filled_quantity=50)
         await handler.handle(event)
         handler._on_entry_fill.assert_not_called()
         handler._on_stop_fill.assert_not_called()
         handler._on_tp_fill.assert_not_called()
 
     async def test_missing_order_id_ignored(self, handler: TransactionHandler) -> None:
-        event = {"symbol": "AAPL", "filledQuantity": 50}
+        event = TransactionPayload(symbol="AAPL", filled_quantity=50)
         await handler.handle(event)
         handler._on_entry_fill.assert_not_called()
 
     async def test_string_order_id_converted(self, handler: TransactionHandler) -> None:
         """String orderId should be converted to int."""
-        event = {"orderId": "100", "symbol": "AAPL", "filledQuantity": 50}
+        event = TransactionPayload(order_id="100", symbol="AAPL", filled_quantity=50)
         await handler.handle(event)
         handler._on_entry_fill.assert_called_once_with(event, "plan-001")
 
     async def test_invalid_order_id_ignored(self, handler: TransactionHandler) -> None:
         """Non-numeric string orderId should be ignored."""
-        event = {"orderId": "not-a-number", "symbol": "AAPL"}
+        event = TransactionPayload(order_id="not-a-number", symbol="AAPL")
         await handler.handle(event)
         handler._on_entry_fill.assert_not_called()

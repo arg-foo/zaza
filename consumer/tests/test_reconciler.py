@@ -9,6 +9,7 @@ import orjson
 import pytest
 
 from zaza_consumer.config import ConsumerSettings
+from zaza_consumer.models import TransactionPayload
 from zaza_consumer.plan_index import PlanIndex
 from zaza_consumer.reconciler import reconcile_on_startup, rth_scan_loop
 
@@ -228,7 +229,8 @@ class TestReconcileEntryFilledNoProtectives:
             mock_fill.assert_called_once()
             call_kw = mock_fill.call_args[1]
             event = call_kw["event"]
-            assert event["filledQuantity"] == 50
+            assert isinstance(event, TransactionPayload)
+            assert event.filled_quantity == 50
 
 
 class TestReconcileStopFilled:

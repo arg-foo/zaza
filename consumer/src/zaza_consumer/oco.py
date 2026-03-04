@@ -14,6 +14,7 @@ from typing import Any
 import orjson
 import structlog
 
+from zaza_consumer.models import TransactionPayload
 from zaza_consumer.plan_index import PlanIndex
 
 logger = structlog.get_logger(__name__)
@@ -115,7 +116,7 @@ async def _is_fully_filled(
 
 
 async def handle_stop_fill(
-    event: dict[str, Any],
+    event: TransactionPayload,
     plan_id: str,
     mcp: McpClientsProtocol,
     index: PlanIndex,
@@ -128,7 +129,7 @@ async def handle_stop_fill(
         3. Close the trade plan with reason ``"stop_hit"``.
         4. Remove all plan entries from index.
     """
-    order_id = int(event["orderId"])
+    order_id = int(event.order_id)  # type: ignore[arg-type]
     logger.info("handling_stop_fill", order_id=order_id, plan_id=plan_id)
 
     # Check if this is a partial or full fill
@@ -170,7 +171,7 @@ async def handle_stop_fill(
 
 
 async def handle_tp_fill(
-    event: dict[str, Any],
+    event: TransactionPayload,
     plan_id: str,
     mcp: McpClientsProtocol,
     index: PlanIndex,
@@ -183,7 +184,7 @@ async def handle_tp_fill(
         3. Close the trade plan with reason ``"target_hit"``.
         4. Remove all plan entries from index.
     """
-    order_id = int(event["orderId"])
+    order_id = int(event.order_id)  # type: ignore[arg-type]
     logger.info("handling_tp_fill", order_id=order_id, plan_id=plan_id)
 
     # Check if this is a partial or full fill

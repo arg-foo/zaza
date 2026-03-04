@@ -9,6 +9,7 @@ import orjson
 import pytest
 
 from zaza_consumer.config import ConsumerSettings
+from zaza_consumer.models import TransactionPayload
 from zaza_consumer.stream import _read_and_process
 
 
@@ -21,6 +22,15 @@ def settings():
     )
 
 
+def _make_envelope(payload_dict: dict) -> dict[bytes, bytes]:
+    """Build a Redis stream fields dict matching the publisher's envelope format."""
+    return {
+        b"account": b"DU12345",
+        b"received_at": b"2026-01-01T00:00:00Z",
+        b"payload": orjson.dumps(payload_dict),
+    }
+
+
 class TestReadAndProcess:
     """Test _read_and_process with mocked Redis."""
 
@@ -28,10 +38,10 @@ class TestReadAndProcess:
         """Should deserialize message, call handler, and XACK."""
         handler = AsyncMock()
         redis = AsyncMock()
-        event_data = {"orderId": 123, "symbol": "AAPL", "filledQuantity": 50}
+        event_data = {"orderId": "123", "symbol": "AAPL", "filledQuantity": 50}
 
         msg_id = b"1234567890-0"
-        fields = {b"data": orjson.dumps(event_data)}
+        fields = _make_envelope(event_data)
 
         # First call returns messages, second call returns empty (to end pending phase)
         redis.xreadgroup = AsyncMock(side_effect=[
@@ -53,7 +63,12 @@ class TestReadAndProcess:
             shutdown=shutdown,
         )
 
-        handler.assert_called_once_with(event_data)
+        handler.assert_called_once()
+        payload = handler.call_args[0][0]
+        assert isinstance(payload, TransactionPayload)
+        assert payload.order_id == "123"
+        assert payload.symbol == "AAPL"
+        assert payload.filled_quantity == 50
         redis.xack.assert_called_once_with(
             "tiger:events:transaction", "trade-executor", msg_id
         )
@@ -87,7 +102,7 @@ class TestReadAndProcess:
         redis = AsyncMock()
 
         msg_id = b"1234567890-0"
-        fields = {b"data": orjson.dumps({"orderId": 1})}
+        fields = _make_envelope({"orderId": "1"})
 
         redis.xreadgroup = AsyncMock(side_effect=[
             [(b"stream", [(msg_id, fields)])],
@@ -181,16 +196,13 @@ class TestReadAndProcess:
         handler = AsyncMock()
         redis = AsyncMock()
 
-        event_1 = {"orderId": 1, "symbol": "AAPL"}
-        event_2 = {"orderId": 2, "symbol": "MSFT"}
-
         msg_id_1 = b"1000-0"
         msg_id_2 = b"1001-0"
 
         redis.xreadgroup = AsyncMock(side_effect=[
             [(b"stream", [
-                (msg_id_1, {b"data": orjson.dumps(event_1)}),
-                (msg_id_2, {b"data": orjson.dumps(event_2)}),
+                (msg_id_1, _make_envelope({"orderId": "1", "symbol": "AAPL"})),
+                (msg_id_2, _make_envelope({"orderId": "2", "symbol": "MSFT"})),
             ])],
             [],  # End pending phase
         ])
@@ -210,20 +222,24 @@ class TestReadAndProcess:
         )
 
         assert handler.call_count == 2
-        handler.assert_any_call(event_1)
-        handler.assert_any_call(event_2)
+        p1 = handler.call_args_list[0][0][0]
+        p2 = handler.call_args_list[1][0][0]
+        assert isinstance(p1, TransactionPayload)
+        assert isinstance(p2, TransactionPayload)
+        assert p1.order_id == "1"
+        assert p2.order_id == "2"
         assert redis.xack.call_count == 2
 
-    async def test_missing_data_field_uses_empty_dict(
+    async def test_missing_payload_field(
         self, settings: ConsumerSettings
     ) -> None:
-        """If message has no 'data' field, handler receives empty dict."""
+        """If message has no 'payload' field, handler receives empty TransactionPayload."""
         handler = AsyncMock()
         redis = AsyncMock()
 
         msg_id = b"1234567890-0"
-        # Fields exist but no b"data" key -- some other field present
-        fields = {b"other_field": b"value"}
+        # Fields exist but no b"payload" key
+        fields = {b"account": b"DU12345", b"received_at": b"2026-01-01T00:00:00Z"}
 
         redis.xreadgroup = AsyncMock(side_effect=[
             [(b"stream", [(msg_id, fields)])],
@@ -244,5 +260,96 @@ class TestReadAndProcess:
             shutdown=shutdown,
         )
 
-        handler.assert_called_once_with({})
+        handler.assert_called_once()
+        payload = handler.call_args[0][0]
+        assert isinstance(payload, TransactionPayload)
+        assert payload.order_id is None
         redis.xack.assert_called_once()
+
+    async def test_full_envelope_format_unwrapped(
+        self, settings: ConsumerSettings
+    ) -> None:
+        """Contract test: envelope is unwrapped and only payload reaches handler."""
+        handler = AsyncMock()
+        redis = AsyncMock()
+
+        msg_id = b"1234567890-0"
+        fields = {
+            b"account": b"DU12345",
+            b"timestamp": b"1709000000000",
+            b"received_at": b"2026-01-01T00:00:00Z",
+            b"payload": orjson.dumps({
+                "orderId": "100",
+                "symbol": "TSLA",
+                "filledQuantity": 25,
+                "filledPrice": 250.0,
+            }),
+        }
+
+        redis.xreadgroup = AsyncMock(side_effect=[
+            [(b"stream", [(msg_id, fields)])],
+            [],
+        ])
+        redis.xack = AsyncMock()
+
+        shutdown = asyncio.Event()
+
+        await _read_and_process(
+            redis=redis,
+            stream_key="tiger:events:transaction",
+            group="trade-executor",
+            consumer="executor-1",
+            settings=settings,
+            handler=handler,
+            read_id="0",
+            shutdown=shutdown,
+        )
+
+        handler.assert_called_once()
+        payload = handler.call_args[0][0]
+        assert isinstance(payload, TransactionPayload)
+        assert payload.order_id == "100"
+        assert payload.symbol == "TSLA"
+        assert payload.filled_quantity == 25
+        assert payload.filled_price == 250.0
+
+    async def test_malformed_payload_json_acks_and_skips(
+        self, settings: ConsumerSettings
+    ) -> None:
+        """Malformed payload JSON should ACK (prevent redelivery) and skip handler."""
+        handler = AsyncMock()
+        redis = AsyncMock()
+
+        msg_id = b"1234567890-0"
+        # Invalid JSON in payload field
+        fields = {
+            b"account": b"DU12345",
+            b"received_at": b"2026-01-01T00:00:00Z",
+            b"payload": b"not-valid-json{{{",
+        }
+
+        redis.xreadgroup = AsyncMock(side_effect=[
+            [(b"stream", [(msg_id, fields)])],
+            [],  # End pending phase
+        ])
+        redis.xack = AsyncMock()
+
+        shutdown = asyncio.Event()
+
+        await _read_and_process(
+            redis=redis,
+            stream_key="tiger:events:transaction",
+            group="trade-executor",
+            consumer="executor-1",
+            settings=settings,
+            handler=handler,
+            read_id="0",
+            shutdown=shutdown,
+        )
+
+        # Handler must NOT be called (deserialization failed)
+        handler.assert_not_called()
+        # Message MUST be ACKed to prevent infinite redelivery
+        redis.xack.assert_called_once_with(
+            "tiger:events:transaction", "trade-executor", msg_id
+        )

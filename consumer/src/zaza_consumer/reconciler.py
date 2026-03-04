@@ -27,6 +27,7 @@ from zaza_consumer.fill_manager import (
     _is_numeric_order_id,
     handle_entry_fill,
 )
+from zaza_consumer.models import TransactionPayload
 from zaza_consumer.oco import handle_stop_fill, handle_tp_fill
 from zaza_consumer.plan_index import PlanIndex, PlanLocks
 from zaza_consumer.rth import is_rth_open
@@ -225,7 +226,7 @@ async def _reconcile_plan(
         sl_id = int(sl_oid)  # type: ignore[arg-type]
         logger.info("reconcile_stop_filled", plan_id=plan_id, sl_id=sl_id)
         await handle_stop_fill(
-            event={"orderId": sl_id, "symbol": ""},
+            event=TransactionPayload(order_id=str(sl_id)),
             plan_id=plan_id,
             mcp=mcp,
             index=index,
@@ -237,7 +238,7 @@ async def _reconcile_plan(
         tp_id = int(tp_oid)  # type: ignore[arg-type]
         logger.info("reconcile_tp_filled", plan_id=plan_id, tp_id=tp_id)
         await handle_tp_fill(
-            event={"orderId": tp_id, "symbol": ""},
+            event=TransactionPayload(order_id=str(tp_id)),
             plan_id=plan_id,
             mcp=mcp,
             index=index,
@@ -291,11 +292,11 @@ async def _rerun_entry_fill(
             error=str(exc),
         )
 
-    synthetic_event = {
-        "orderId": entry_id,
-        "symbol": "",
-        "filledQuantity": filled_qty,
-    }
+    synthetic_event = TransactionPayload(
+        order_id=str(entry_id),
+        symbol="",
+        filled_quantity=filled_qty,
+    )
     await handle_entry_fill(
         event=synthetic_event,
         plan_id=plan_id,

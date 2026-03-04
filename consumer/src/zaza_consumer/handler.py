@@ -6,6 +6,7 @@ from typing import Any
 
 import structlog
 
+from zaza_consumer.models import TransactionPayload
 from zaza_consumer.plan_index import PlanIndex
 
 logger = structlog.get_logger(__name__)
@@ -26,22 +27,17 @@ class TransactionHandler:
         self._on_stop_fill = on_stop_fill
         self._on_tp_fill = on_tp_fill
 
-    async def handle(self, event: dict[str, Any]) -> None:
-        """Process a transaction event from the Redis stream.
-
-        Expected event shape: {"orderId": int, "symbol": str, "filledPrice": float,
-                               "filledQuantity": int, "action": str, ...}
-        """
-        order_id = event.get("orderId")
-        if order_id is None:
-            logger.warning("event_missing_order_id", raw_event=event)
+    async def handle(self, event: TransactionPayload) -> None:
+        """Process a transaction payload from the Redis stream."""
+        if event.order_id is None:
+            logger.warning("event_missing_order_id", raw_event=event.model_dump())
             return
 
         # Ensure order_id is int
         try:
-            order_id = int(order_id)
+            order_id = int(event.order_id)
         except (ValueError, TypeError):
-            logger.warning("event_invalid_order_id", order_id=order_id)
+            logger.warning("event_invalid_order_id", order_id=event.order_id)
             return
 
         result = self._index.lookup(order_id)
@@ -55,7 +51,7 @@ class TransactionHandler:
             order_id=order_id,
             plan_id=plan_id,
             role=role,
-            symbol=event.get("symbol"),
+            symbol=event.symbol,
         )
 
         if role == "entry":

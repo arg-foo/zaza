@@ -15,6 +15,7 @@ from typing import Any
 import orjson
 import structlog
 
+from zaza_consumer.models import TransactionPayload
 from zaza_consumer.plan_index import PlanIndex
 
 logger = structlog.get_logger(__name__)
@@ -125,18 +126,16 @@ _ORDER_ID_RE = re.compile(
 )
 
 
-def _parse_filled_quantity(order_detail: str, event: dict[str, Any]) -> int:
+def _parse_filled_quantity(order_detail: str, event: TransactionPayload) -> int:
     """Extract filled quantity from order detail text or fall back to event data."""
     match = _FILLED_QTY_RE.search(order_detail)
     if match:
         return int(match.group(1))
 
     # Fall back to event data
-    filled = event.get("filledQuantity", 0)
-    try:
-        return int(filled)
-    except (ValueError, TypeError):
-        return 0
+    if event.filled_quantity is not None:
+        return event.filled_quantity
+    return 0
 
 
 def _extract_order_id_from_result(result: str) -> str | None:
@@ -153,7 +152,7 @@ def _extract_order_id_from_result(result: str) -> str | None:
 
 
 async def handle_entry_fill(
-    event: dict[str, Any],
+    event: TransactionPayload,
     plan_id: str,
     mcp: McpClientsProtocol,
     index: PlanIndex,
@@ -169,8 +168,8 @@ async def handle_entry_fill(
         5. If protective orders exist, modify quantities.
         6. Update plan XML with new order IDs and quantities.
     """
-    order_id = int(event["orderId"])
-    symbol = event.get("symbol", "")
+    order_id = int(event.order_id)  # type: ignore[arg-type]
+    symbol = event.symbol or ""
 
     logger.info("handling_entry_fill", order_id=order_id, plan_id=plan_id, symbol=symbol)
 

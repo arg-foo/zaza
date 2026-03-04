@@ -11,7 +11,6 @@ then consumes the Redis transaction stream and manages the order lifecycle.
 from __future__ import annotations
 
 import asyncio
-from typing import Any
 
 import structlog
 
@@ -19,6 +18,7 @@ from zaza_consumer.config import ConsumerSettings
 from zaza_consumer.fill_manager import handle_entry_fill
 from zaza_consumer.handler import TransactionHandler
 from zaza_consumer.mcp_clients import McpClients
+from zaza_consumer.models import TransactionPayload
 from zaza_consumer.oco import handle_stop_fill, handle_tp_fill
 from zaza_consumer.plan_index import PlanIndex, PlanLocks
 from zaza_consumer.reconciler import reconcile_on_startup, rth_scan_loop
@@ -44,7 +44,7 @@ async def main() -> None:
 
     # Build handler with closures that capture mcp, index, settings, locks
     async def _on_entry(
-        event: dict[str, Any], plan_id: str,
+        event: TransactionPayload, plan_id: str,
     ) -> None:
         async with locks.get(plan_id):
             await handle_entry_fill(
@@ -52,14 +52,14 @@ async def main() -> None:
             )
 
     async def _on_stop(
-        event: dict[str, Any], plan_id: str,
+        event: TransactionPayload, plan_id: str,
     ) -> None:
         async with locks.get(plan_id):
             await handle_stop_fill(event, plan_id, mcp, index)
         locks.remove(plan_id)
 
     async def _on_tp(
-        event: dict[str, Any], plan_id: str,
+        event: TransactionPayload, plan_id: str,
     ) -> None:
         async with locks.get(plan_id):
             await handle_tp_fill(event, plan_id, mcp, index)

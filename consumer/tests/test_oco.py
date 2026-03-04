@@ -6,6 +6,7 @@ from unittest.mock import AsyncMock
 
 import orjson
 
+from zaza_consumer.models import TransactionPayload
 from zaza_consumer.oco import (
     _get_order_id_from_xml,
     handle_stop_fill,
@@ -160,7 +161,9 @@ class TestHandleStopFill:
         index.add(12346, "plan-001", "stop_loss")
         index.add(12347, "plan-001", "take_profit")
 
-        event = {"orderId": 12346, "symbol": "AAPL", "filledQuantity": 50}
+        event = TransactionPayload(
+            order_id="12346", symbol="AAPL", filled_quantity=50,
+        )
 
         await handle_stop_fill(
             event=event, plan_id="plan-001", mcp=mcp, index=index,
@@ -189,7 +192,9 @@ class TestHandleStopFill:
         index.add(12346, "plan-001", "stop_loss")
         index.add(12347, "plan-001", "take_profit")
 
-        event = {"orderId": 12346, "symbol": "AAPL", "filledQuantity": 50}
+        event = TransactionPayload(
+            order_id="12346", symbol="AAPL", filled_quantity=50,
+        )
 
         # Should NOT raise despite cancel failure
         await handle_stop_fill(
@@ -217,7 +222,9 @@ class TestHandleStopFill:
         # Add another plan to verify it survives
         index.add(99999, "plan-other", "entry")
 
-        event = {"orderId": 12346, "symbol": "AAPL", "filledQuantity": 50}
+        event = TransactionPayload(
+            order_id="12346", symbol="AAPL", filled_quantity=50,
+        )
 
         await handle_stop_fill(
             event=event, plan_id="plan-001", mcp=mcp, index=index,
@@ -244,7 +251,9 @@ class TestHandleStopFill:
         index = PlanIndex()
         index.add(12346, "plan-001", "stop_loss")
 
-        event = {"orderId": 12346, "symbol": "AAPL", "filledQuantity": 50}
+        event = TransactionPayload(
+            order_id="12346", symbol="AAPL", filled_quantity=50,
+        )
 
         await handle_stop_fill(
             event=event, plan_id="plan-001", mcp=mcp, index=index,
@@ -274,7 +283,9 @@ class TestHandleStopFill:
         index.add(12346, "plan-001", "stop_loss")
         index.add(12347, "plan-001", "take_profit")
 
-        event = {"orderId": 12346, "symbol": "AAPL", "filledQuantity": 25}
+        event = TransactionPayload(
+            order_id="12346", symbol="AAPL", filled_quantity=25,
+        )
 
         await handle_stop_fill(
             event=event, plan_id="plan-001", mcp=mcp, index=index,
@@ -312,7 +323,9 @@ class TestHandleTpFill:
         index.add(12346, "plan-001", "stop_loss")
         index.add(12347, "plan-001", "take_profit")
 
-        event = {"orderId": 12347, "symbol": "AAPL", "filledQuantity": 50}
+        event = TransactionPayload(
+            order_id="12347", symbol="AAPL", filled_quantity=50,
+        )
 
         await handle_tp_fill(
             event=event, plan_id="plan-001", mcp=mcp, index=index,
@@ -341,7 +354,9 @@ class TestHandleTpFill:
         index.add(12346, "plan-001", "stop_loss")
         index.add(12347, "plan-001", "take_profit")
 
-        event = {"orderId": 12347, "symbol": "AAPL", "filledQuantity": 50}
+        event = TransactionPayload(
+            order_id="12347", symbol="AAPL", filled_quantity=50,
+        )
 
         await handle_tp_fill(
             event=event, plan_id="plan-001", mcp=mcp, index=index,
@@ -365,7 +380,9 @@ class TestHandleTpFill:
         index.add(12346, "plan-001", "stop_loss")
         index.add(12347, "plan-001", "take_profit")
 
-        event = {"orderId": 12347, "symbol": "AAPL", "filledQuantity": 50}
+        event = TransactionPayload(
+            order_id="12347", symbol="AAPL", filled_quantity=50,
+        )
 
         await handle_tp_fill(
             event=event, plan_id="plan-001", mcp=mcp, index=index,
@@ -389,7 +406,9 @@ class TestHandleTpFill:
         index = PlanIndex()
         index.add(12347, "plan-001", "take_profit")
 
-        event = {"orderId": 12347, "symbol": "AAPL", "filledQuantity": 50}
+        event = TransactionPayload(
+            order_id="12347", symbol="AAPL", filled_quantity=50,
+        )
 
         await handle_tp_fill(
             event=event, plan_id="plan-001", mcp=mcp, index=index,
@@ -419,7 +438,9 @@ class TestHandleTpFill:
         index.add(12346, "plan-001", "stop_loss")
         index.add(12347, "plan-001", "take_profit")
 
-        event = {"orderId": 12347, "symbol": "AAPL", "filledQuantity": 25}
+        event = TransactionPayload(
+            order_id="12347", symbol="AAPL", filled_quantity=25,
+        )
 
         await handle_tp_fill(
             event=event, plan_id="plan-001", mcp=mcp, index=index,

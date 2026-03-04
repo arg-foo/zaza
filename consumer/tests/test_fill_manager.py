@@ -18,6 +18,7 @@ from zaza_consumer.fill_manager import (
     _update_quantity_in_xml,
     handle_entry_fill,
 )
+from zaza_consumer.models import TransactionPayload
 from zaza_consumer.plan_index import PlanIndex
 
 # ---------------------------------------------------------------------------
@@ -210,22 +211,26 @@ class TestParseFilledQuantity:
 
     def test_from_order_detail_text(self) -> None:
         detail = "Order 12345\nFilled Qty: 50\nAvg Price: 184.00"
-        qty = _parse_filled_quantity(detail, {"filledQuantity": 0})
+        qty = _parse_filled_quantity(
+            detail, TransactionPayload(filled_quantity=0),
+        )
         assert qty == 50
 
     def test_from_event_fallback(self) -> None:
         detail = "Order 12345 details with no quantity info"
-        qty = _parse_filled_quantity(detail, {"filledQuantity": 30})
+        qty = _parse_filled_quantity(
+            detail, TransactionPayload(filled_quantity=30),
+        )
         assert qty == 30
 
     def test_zero_when_no_data(self) -> None:
         detail = "No quantity info here"
-        qty = _parse_filled_quantity(detail, {})
+        qty = _parse_filled_quantity(detail, TransactionPayload())
         assert qty == 0
 
     def test_case_insensitive_parsing(self) -> None:
         detail = "filled quantity: 42"
-        qty = _parse_filled_quantity(detail, {})
+        qty = _parse_filled_quantity(detail, TransactionPayload())
         assert qty == 42
 
 
@@ -267,7 +272,9 @@ class TestHandleEntryFillFirstFill:
         index = PlanIndex()
         index.add(12345, "plan-001", "entry")
 
-        event = {"orderId": 12345, "symbol": "AAPL", "filledQuantity": 50}
+        event = TransactionPayload(
+            order_id="12345", symbol="AAPL", filled_quantity=50,
+        )
 
         await handle_entry_fill(
             event=event,
@@ -309,7 +316,9 @@ class TestHandleEntryFillFirstFill:
         index = PlanIndex()
         index.add(12345, "plan-001", "entry")
 
-        event = {"orderId": 12345, "symbol": "AAPL", "filledQuantity": 50}
+        event = TransactionPayload(
+            order_id="12345", symbol="AAPL", filled_quantity=50,
+        )
 
         await handle_entry_fill(
             event=event,
@@ -343,7 +352,9 @@ class TestHandleEntryFillFirstFill:
         index = PlanIndex()
         index.add(12345, "plan-001", "entry")
 
-        event = {"orderId": 12345, "symbol": "AAPL", "filledQuantity": 50}
+        event = TransactionPayload(
+            order_id="12345", symbol="AAPL", filled_quantity=50,
+        )
 
         await handle_entry_fill(
             event=event,
@@ -372,7 +383,9 @@ class TestHandleEntryFillSubsequent:
         index.add(12346, "plan-001", "stop_loss")
         index.add(12347, "plan-001", "take_profit")
 
-        event = {"orderId": 12345, "symbol": "AAPL", "filledQuantity": 50}
+        event = TransactionPayload(
+            order_id="12345", symbol="AAPL", filled_quantity=50,
+        )
 
         await handle_entry_fill(
             event=event,
@@ -408,7 +421,9 @@ class TestHandleEntryFillSubsequent:
         index.add(12346, "plan-001", "stop_loss")
         index.add(12347, "plan-001", "take_profit")
 
-        event = {"orderId": 12345, "symbol": "AAPL", "filledQuantity": 50}
+        event = TransactionPayload(
+            order_id="12345", symbol="AAPL", filled_quantity=50,
+        )
 
         # Process the same fill twice
         await handle_entry_fill(
@@ -480,7 +495,9 @@ class TestHandleEntryFillMissingExitParams:
         index = PlanIndex()
         index.add(12345, "plan-001", "entry")
 
-        event = {"orderId": 12345, "symbol": "AAPL", "filledQuantity": 50}
+        event = TransactionPayload(
+            order_id="12345", symbol="AAPL", filled_quantity=50,
+        )
 
         await handle_entry_fill(
             event=event,
@@ -505,7 +522,9 @@ class TestHandleEntryFillMissingExitParams:
         index = PlanIndex()
         index.add(12345, "plan-001", "entry")
 
-        event = {"orderId": 12345, "symbol": "AAPL", "filledQuantity": 50}
+        event = TransactionPayload(
+            order_id="12345", symbol="AAPL", filled_quantity=50,
+        )
 
         await handle_entry_fill(
             event=event,
@@ -536,7 +555,9 @@ class TestHandleEntryFillPartialFailure:
         index = PlanIndex()
         index.add(12345, "plan-001", "entry")
 
-        event = {"orderId": 12345, "symbol": "AAPL", "filledQuantity": 50}
+        event = TransactionPayload(
+            order_id="12345", symbol="AAPL", filled_quantity=50,
+        )
 
         with pytest.raises(RuntimeError, match="TP placement failed"):
             await handle_entry_fill(
@@ -575,7 +596,9 @@ class TestHandleEntryFillEdgeCases:
         index = PlanIndex()
         index.add(12345, "plan-001", "entry")
 
-        event = {"orderId": 12345, "symbol": "AAPL", "filledQuantity": 0}
+        event = TransactionPayload(
+            order_id="12345", symbol="AAPL", filled_quantity=0,
+        )
 
         await handle_entry_fill(
             event=event, plan_id="plan-001", mcp=mcp, index=index, order_delay_ms=0,
@@ -593,7 +616,9 @@ class TestHandleEntryFillEdgeCases:
         index = PlanIndex()
         index.add(12345, "plan-001", "entry")
 
-        event = {"orderId": 12345, "symbol": "AAPL", "filledQuantity": 50}
+        event = TransactionPayload(
+            order_id="12345", symbol="AAPL", filled_quantity=50,
+        )
 
         await handle_entry_fill(
             event=event, plan_id="plan-001", mcp=mcp, index=index, order_delay_ms=0,
@@ -615,7 +640,9 @@ class TestHandleEntryFillEdgeCases:
         index = PlanIndex()
         index.add(12345, "plan-001", "entry")
 
-        event = {"orderId": 12345, "symbol": "AAPL", "filledQuantity": 25}
+        event = TransactionPayload(
+            order_id="12345", symbol="AAPL", filled_quantity=25,
+        )
 
         await handle_entry_fill(
             event=event, plan_id="plan-001", mcp=mcp, index=index, order_delay_ms=0,
