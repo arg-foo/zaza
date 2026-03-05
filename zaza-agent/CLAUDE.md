@@ -230,36 +230,54 @@
   </step>
 
   <step id="4" name="Execute Orders" runs="always">
-    1. DISCOVER outstanding orders:
+    1. DISCOVER plan states:
        a. list_trade_plans(status="active") - ALL active plans (not just this session)
        b. mcp__tiger__get_open_orders() - all live broker orders
        c. get_trade_plan(id) per plan - parse XML
-       d. Outstanding = orders with non-numeric order_id (placeholder like "SOME_ORDER_ID"
-          or {SIDE}-{TICKER}-* format) AND no matching broker order for that ticker/side/price
+       d. CLASSIFY each plan:
+          NEEDS_BRACKET: entry status=PENDING AND order_id not in open orders (new or expired bracket)
+          NEEDS_OCA: entry status=COMPLETED AND order_id not in open orders (TP/SL expired, need renewal)
+          ACTIVE: order_id found in open orders (no action needed)
+          FILLED: TP or SL filled (close plan)
 
-    2. SELL FIRST (free capital):
-       For each outstanding SELL: preview -> verify no errors -> place -> record order_id
+    2. CLOSE filled plans:
+       For each FILLED: close_trade_plan(reason="target_hit|stop_hit")
 
-    3. BUY (new entries):
-       For each outstanding BUY: preview -> verify funds + no errors -> place -> record order_id
+    3. SELL FIRST (TRIM/EXIT positions from Step 1):
+       For each outstanding SELL: preview_stock_order -> verify no errors -> place_stock_order -> record order_id
 
-    4. PROTECTIVE ORDERS:
-       Stop-loss: place_stock_order(order_type="STP_LMT", stop_price, limit_price)
-       Take-profit: place_stock_order(order_type="LMT", limit_price=target)
+    4. PLACE BRACKETS (new entries + protective orders in one atomic order):
+       For each NEEDS_BRACKET:
+         preview_bracket_order(symbol, qty, entry_limit, tp_limit, sl_stop, sl_limit)
+         -> verify no errors
+         -> place_bracket_order(same params)
+         -> record order_id in plan XML
+         -> update_trade_plan
 
-    5. VERIFY: get_open_orders() - cross-check all active plans
+    5. PLACE OCA (renew expired TP/SL for filled entries):
+       For each NEEDS_OCA:
+         Fetch current held qty from get_positions() for accurate sizing
+         preview_oca_order(symbol, qty, tp_limit, sl_stop, sl_limit)
+         -> verify no errors
+         -> place_oca_order(same params)
+         -> record new order_id in plan XML, entry status stays COMPLETED
+         -> update_trade_plan
 
-    6. PERSIST: For each placed order:
+    6. VERIFY: get_open_orders() - cross-check all active plans
+
+    7. PERSIST: For each placed/updated order:
        get_trade_plan -> update order_id in XML -> update_trade_plan
+       When entry fills (status PENDING->COMPLETED): update status in XML
        When closed: close_trade_plan(reason="target_hit|stop_hit|manual_exit|cancelled")
 
     Error rules:
     - Preview ERROR -> skip, log
     - Preview WARNING -> proceed, note
     - Place fails -> retry once, then skip
-    - BUY entry fails -> skip its stop/target too
-    - Insufficient funds -> prioritize HIGH conviction, skip rest
-    - Always SELL before BUY
+    - Bracket fails -> no position opened, safe to skip
+    - OCA fails -> position has no protection, MUST retry or alert
+    - Insufficient funds -> prioritize HIGH conviction brackets, skip rest
+    - Always SELL before BRACKET/OCA
 
     Output: | Status | Ticker | Side | Qty | Type | Price | Order ID | Notes |
     End with: get_positions() + get_account_summary()
@@ -317,54 +335,55 @@
         <risk_reward_ratio>{R:R}</risk_reward_ratio>
         <rationale>{1-2 sentences from analysis}</rationale>
       </summary>
-      <entry>
-        <strategy>{breakout_buy|pullback_buy|momentum_entry|mean_reversion|gap_fill|support_bounce|exit_position|trim_position}</strategy>
-        <trigger>{specific condition}</trigger>
-        <limit-order>
-          <order_id>SOME_ORDER_ID</order_id>
-          <type>LIMIT</type>
-          <side>{BUY|SELL}</side>
-          <ticker>{TICKER}</ticker>
-          <quantity>{shares}</quantity>
-          <limit_price>{price}</limit_price>
-          <time_in_force>{DAY|GTC}</time_in_force>
-          <notes>{price level basis: S/R, VWAP, Fib}</notes>
-        </limit-order>
-      </entry>
-      <exit>
-        <stop-loss>
-          <strategy>{hard_stop|trailing_stop|break_even_stop}</strategy>
-          <trigger>{condition}</trigger>
-          <risk_pct>{max portfolio loss %}</risk_pct>
+      <order>
+        <order_id>SOME_ORDER_ID</order_id>
+        <entry>
+          <status>{PENDING|COMPLETED}</status>
+          <strategy>{breakout_buy|pullback_buy|momentum_entry|mean_reversion|gap_fill|support_bounce|exit_position|trim_position}</strategy>
+          <trigger>{specific condition}</trigger>
           <limit-order>
-            <order_id>SOME_ORDER_ID</order_id>
-            <type>STOP_LIMIT</type>
-            <side>{opposite of entry}</side>
-            <ticker>{TICKER}</ticker>
-            <quantity>{shares}</quantity>
-            <stop_price>{trigger price}</stop_price>
-            <limit_price>{fill price, slightly beyond stop}</limit_price>
-            <time_in_force>GTC</time_in_force>
-            <notes>{technical basis}</notes>
-          </limit-order>
-        </stop-loss>
-        <take-profit>
-          <strategy>{target_exit|scaled_exit|trailing_target}</strategy>
-          <trigger>{condition}</trigger>
-          <reward_pct>{gain %}</reward_pct>
-          <limit-order>
-            <order_id>SOME_ORDER_ID</order_id>
             <type>LIMIT</type>
-            <side>{opposite of entry}</side>
+            <side>BUY</side>
             <ticker>{TICKER}</ticker>
             <quantity>{shares}</quantity>
-            <limit_price>{target}</limit_price>
-            <time_in_force>GTC</time_in_force>
-            <notes>{technical basis}</notes>
+            <limit_price>{price}</limit_price>
+            <time_in_force>{DAY|GTC}</time_in_force>
+            <notes>{price level basis: S/R, VWAP, Fib}</notes>
           </limit-order>
-        </take-profit>
-        <time_exit>{fallback exit condition}</time_exit>
-      </exit>
+        </entry>
+        <exit>
+          <stop-loss>
+            <strategy>{hard_stop|trailing_stop|break_even_stop}</strategy>
+            <trigger>{condition}</trigger>
+            <risk_pct>{max portfolio loss %}</risk_pct>
+            <limit-order>
+              <type>STOP_LIMIT</type>
+              <side>SELL</side>
+              <ticker>{TICKER}</ticker>
+              <quantity>{shares}</quantity>
+              <stop_price>{trigger price}</stop_price>
+              <limit_price>{fill price, slightly beyond stop}</limit_price>
+              <time_in_force>DAY</time_in_force>
+              <notes>{technical basis}</notes>
+            </limit-order>
+          </stop-loss>
+          <take-profit>
+            <strategy>{target_exit|scaled_exit|trailing_target}</strategy>
+            <trigger>{condition}</trigger>
+            <reward_pct>{gain %}</reward_pct>
+            <limit-order>
+              <type>LIMIT</type>
+              <side>SELL</side>
+              <ticker>{TICKER}</ticker>
+              <quantity>{shares}</quantity>
+              <limit_price>{target}</limit_price>
+              <time_in_force>DAY</time_in_force>
+              <notes>{technical basis}</notes>
+            </limit-order>
+          </take-profit>
+          <time_exit>{fallback exit condition}</time_exit>
+        </exit>
+      </order>
     </trade-plan>
   </template>
 
@@ -374,7 +393,7 @@
     - stop_price != limit_price on stop orders (limit beyond stop for fill)
     - risk_pct &lt;= 3% of total portfolio per trade
     - R:R &gt;= 1:1.5
-    - TIF: DAY for entries, GTC for exits (unless justified)
+    - TIF: DAY
     - All prices from TA/Fib/S&amp;R/VWAP analysis - never arbitrary round numbers
     - Include portfolio-after allocation summary after all trade-plan blocks
   </rules>
