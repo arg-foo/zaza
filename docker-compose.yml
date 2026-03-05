@@ -27,6 +27,12 @@ services:
     environment:
       - ZAZA_TRADES_DIR=/trades
     env_file: .env
+    healthcheck:
+      test: ["CMD", "python", "-c", "import socket; s = socket.create_connection(('localhost', 8100), timeout=2); s.close()"]
+      interval: 5s
+      timeout: 3s
+      retries: 5
+      start_period: 10s
     networks:
       - default
       - tiger
@@ -37,7 +43,7 @@ services:
       context: ./consumer
     depends_on:
       zaza:
-        condition: service_started
+        condition: service_healthy
     env_file: .env
     environment:
       - ZAZA_MCP_URL=http://zaza:8100/mcp

@@ -7,9 +7,11 @@ Zaza trade-plan management.
 
 from __future__ import annotations
 
+import asyncio
 from contextlib import AsyncExitStack
 from typing import Any
 
+import httpx
 import structlog
 from mcp import ClientSession
 from mcp.client.streamable_http import streamablehttp_client
@@ -32,44 +34,87 @@ class McpClients:
     # Lifecycle
     # ------------------------------------------------------------------
 
-    async def connect(self) -> None:
-        """Open MCP connections to both Tiger and Zaza servers."""
-        stack = AsyncExitStack()
-        try:
-            self._exit_stack = await stack.__aenter__()
+    async def connect(
+        self, *, max_retries: int = 5, base_delay: float = 1.0
+    ) -> None:
+        """Open MCP connections to both Tiger and Zaza servers.
 
-            # Tiger
-            tiger_read, tiger_write, _ = await self._exit_stack.enter_async_context(
-                streamablehttp_client(self._tiger_url)
-            )
-            tiger_session = await self._exit_stack.enter_async_context(
-                ClientSession(tiger_read, tiger_write)
-            )
-            await tiger_session.initialize()
-            self._tiger_session = tiger_session
-            log.info("mcp_client.connected", server="tiger", url=self._tiger_url)
+        Retries on connection errors with exponential backoff.
+        """
+        _retryable = (httpx.ConnectError, OSError, ConnectionError)
 
-            # Zaza
-            zaza_read, zaza_write, _ = await self._exit_stack.enter_async_context(
-                streamablehttp_client(self._zaza_url)
-            )
-            zaza_session = await self._exit_stack.enter_async_context(
-                ClientSession(zaza_read, zaza_write)
-            )
-            await zaza_session.initialize()
-            self._zaza_session = zaza_session
-            log.info("mcp_client.connected", server="zaza", url=self._zaza_url)
+        for attempt in range(1, max_retries + 1):
+            stack = AsyncExitStack()
+            try:
+                self._exit_stack = await stack.__aenter__()
 
-            self._connected = True
-        except Exception:
-            log.error(
-                "mcp_client.connect_failed",
-                tiger_url=self._tiger_url,
-                zaza_url=self._zaza_url,
-            )
-            # Clean up any partial connections
-            await stack.aclose()
-            raise
+                # Tiger
+                tiger_read, tiger_write, _ = (
+                    await self._exit_stack.enter_async_context(
+                        streamablehttp_client(self._tiger_url)
+                    )
+                )
+                tiger_session = await self._exit_stack.enter_async_context(
+                    ClientSession(tiger_read, tiger_write)
+                )
+                await tiger_session.initialize()
+                self._tiger_session = tiger_session
+                log.info(
+                    "mcp_client.connected", server="tiger", url=self._tiger_url
+                )
+
+                # Zaza
+                zaza_read, zaza_write, _ = (
+                    await self._exit_stack.enter_async_context(
+                        streamablehttp_client(self._zaza_url)
+                    )
+                )
+                zaza_session = await self._exit_stack.enter_async_context(
+                    ClientSession(zaza_read, zaza_write)
+                )
+                await zaza_session.initialize()
+                self._zaza_session = zaza_session
+                log.info(
+                    "mcp_client.connected", server="zaza", url=self._zaza_url
+                )
+
+                self._connected = True
+                return
+
+            except _retryable as exc:
+                # Clean up partial connections before retry
+                await stack.aclose()
+                self._exit_stack = None
+                self._tiger_session = None
+                self._zaza_session = None
+
+                if attempt == max_retries:
+                    log.error(
+                        "mcp_client.connect_failed",
+                        tiger_url=self._tiger_url,
+                        zaza_url=self._zaza_url,
+                        attempts=attempt,
+                    )
+                    raise
+
+                delay = base_delay * (2 ** (attempt - 1))
+                log.warning(
+                    "mcp_client.connect_retry",
+                    attempt=attempt,
+                    max_retries=max_retries,
+                    delay=delay,
+                    error=str(exc),
+                )
+                await asyncio.sleep(delay)
+
+            except Exception:
+                log.error(
+                    "mcp_client.connect_failed",
+                    tiger_url=self._tiger_url,
+                    zaza_url=self._zaza_url,
+                )
+                await stack.aclose()
+                raise
 
     async def close(self) -> None:
         """Close all MCP connections and reset state."""

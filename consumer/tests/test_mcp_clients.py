@@ -482,7 +482,73 @@ async def test_connect_failure_cleans_up_partial_connections() -> None:
         return_value=mock_stack,
     ):
         with pytest.raises(ConnectionError, match="Zaza server"):
-            await clients.connect()
+            await clients.connect(max_retries=1)
 
     # Exit stack must have been closed to clean up Tiger
     mock_stack.aclose.assert_awaited_once()
+
+
+@pytest.mark.asyncio
+async def test_connect_retries_on_connection_error() -> None:
+    """connect() retries on ConnectionError and succeeds when server becomes available."""
+    clients = McpClients(
+        tiger_url="http://tiger:8000/mcp",
+        zaza_url="http://zaza:8100/mcp",
+    )
+
+    attempt_count = 0
+
+    async def _mock_enter_context(cm):
+        nonlocal attempt_count
+        attempt_count += 1
+        if attempt_count <= 2:
+            # First attempt: Tiger transport succeeds, Tiger session fails
+            if attempt_count == 1:
+                return (AsyncMock(), AsyncMock(), None)
+            raise OSError("Connection refused")
+        # After retry: all contexts succeed
+        mock = AsyncMock()
+        mock.initialize = AsyncMock()
+        if attempt_count in (3, 5):
+            # Transport contexts return (read, write, _)
+            return (AsyncMock(), AsyncMock(), None)
+        return mock
+
+    mock_stack = AsyncMock(spec=AsyncExitStack)
+    mock_stack.enter_async_context = _mock_enter_context
+    mock_stack.__aenter__ = AsyncMock(return_value=mock_stack)
+
+    with patch(
+        "zaza_consumer.mcp_clients.AsyncExitStack",
+        return_value=mock_stack,
+    ), patch("zaza_consumer.mcp_clients.asyncio.sleep", new_callable=AsyncMock) as mock_sleep:
+        await clients.connect(max_retries=3, base_delay=1.0)
+
+    # Should have slept once with 1s delay (first retry)
+    mock_sleep.assert_awaited_once_with(1.0)
+    assert clients._connected is True
+
+
+@pytest.mark.asyncio
+async def test_connect_no_retry_on_non_connection_error() -> None:
+    """connect() does not retry on non-connection errors (e.g. protocol errors)."""
+    clients = McpClients(
+        tiger_url="http://tiger:8000/mcp",
+        zaza_url="http://zaza:8100/mcp",
+    )
+
+    mock_stack = AsyncMock(spec=AsyncExitStack)
+    mock_stack.enter_async_context = AsyncMock(
+        side_effect=ValueError("Protocol error")
+    )
+    mock_stack.__aenter__ = AsyncMock(return_value=mock_stack)
+
+    with patch(
+        "zaza_consumer.mcp_clients.AsyncExitStack",
+        return_value=mock_stack,
+    ), patch("zaza_consumer.mcp_clients.asyncio.sleep", new_callable=AsyncMock) as mock_sleep:
+        with pytest.raises(ValueError, match="Protocol error"):
+            await clients.connect(max_retries=3)
+
+    # Should NOT have retried
+    mock_sleep.assert_not_awaited()

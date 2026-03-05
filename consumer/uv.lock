@@ -1067,6 +1067,7 @@ name = "zaza-consumer"
 version = "0.1.0"
 source = { editable = "." }
 dependencies = [
+    { name = "httpx" },
     { name = "mcp" },
     { name = "orjson" },
     { name = "redis" },
@@ -1086,6 +1087,7 @@ dev = [
 
 [package.metadata]
 requires-dist = [
+    { name = "httpx", specifier = ">=0.25,<1.0" },
     { name = "mcp", specifier = ">=1.20,<2.0" },
     { name = "mypy", marker = "extra == 'dev'", specifier = ">=1.7,<2.0" },
     { name = "orjson", specifier = ">=3.9,<4.0" },
