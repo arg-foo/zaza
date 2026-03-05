@@ -114,7 +114,7 @@
   <tool name="close_trade_plan"            query="archive a completed/cancelled trade plan" />
 
   <!-- Tiger Brokers (16) — mcp__tiger__* — Cash account only -->
-  <external-tools src="ext/tiger-brokers.md" server="tiger" count="16" />
+  <external-tools src="ext/tiger-brokers.md" server="tiger" count="15" />
 </tools>
 
 <!-- ================================================================ -->
@@ -266,6 +266,8 @@
        get_trade_plan -> update order_id in XML -> update_trade_plan
        When entry fills (status PENDING->COMPLETED): update status in XML
        When closed: close_trade_plan(reason="target_hit|stop_hit|manual_exit|cancelled")
+
+    Constraint: NEVER place an order without both a stop-loss and a take-profit. All orders must use place_bracket_order or place_oca_order.
 
     Error rules:
     - Preview ERROR -> skip, log
