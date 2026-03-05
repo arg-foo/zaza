@@ -1,5 +1,5 @@
 <!-- Tiger Brokers Cash MCP -->
-<!-- Server: tiger | Transport: stdin/stdout | Tools: 16 | Domains: 6 -->
+<!-- Server: tiger | Transport: stdin/stdout | Tools: 15 | Domains: 5 -->
 <!-- Cash account trading. Tools appear as mcp__tiger__tool_name. -->
 
 <tiger-tools>
@@ -22,31 +22,7 @@
     <param name="limit"  type="int" required="no"  default="100" />
   </tool>
 
-  <!-- Order Execution (2) -->
-  <tool name="preview_stock_order"     query="dry-run order with safety checks, cost estimate, commission">
-    <param name="symbol"      type="str"   required="yes" description="uppercase ticker" />
-    <param name="action"      type="str"   required="yes" description="BUY|SELL" />
-    <param name="quantity"    type="int"   required="yes" description="positive integer" />
-    <param name="order_type"  type="str"   required="yes" description="LMT|STP_LMT" />
-    <param name="limit_price" type="float" required="yes" description="limit price" />
-    <param name="stop_price"  type="float" required="no"  description="required for STP_LMT" />
-  </tool>
-  <tool name="place_stock_order"       query="execute order with 6 safety checks. blocked if errors exist">
-    <param name="symbol"      type="str"   required="yes" description="uppercase ticker" />
-    <param name="action"      type="str"   required="yes" description="BUY|SELL" />
-    <param name="quantity"    type="int"   required="yes" description="positive integer" />
-    <param name="order_type"  type="str"   required="yes" description="LMT|STP_LMT" />
-    <param name="limit_price" type="float" required="yes" description="limit price" />
-    <param name="stop_price"  type="float" required="no"  description="required for STP_LMT" />
-  </tool>
-
   <!-- Order Management (3) -->
-  <tool name="modify_order"            query="modify open order qty/limit/stop price. re-checks safety on increased risk">
-    <param name="order_id"    type="int"   required="yes" />
-    <param name="quantity"    type="int"   required="no" />
-    <param name="limit_price" type="float" required="no" />
-    <param name="stop_price"  type="float" required="no" />
-  </tool>
   <tool name="cancel_order"            query="cancel single open order by ID">
     <param name="order_id" type="int" required="yes" />
   </tool>
@@ -84,7 +60,7 @@
     <param name="sl_limit_price"    type="float" required="yes" description="stop-loss execution floor, must be <= sl_stop_price" />
   </tool>
 
-  <!-- Order Query (2) -->
+  <!-- Order Query (3) -->
   <tool name="get_open_orders"         query="list open/partially-filled orders">
     <param name="symbol" type="str" required="no" description="filter by ticker, empty = all" />
   </tool>
