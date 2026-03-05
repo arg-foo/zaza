@@ -113,8 +113,8 @@
   <tool name="update_trade_plan"           query="validate and overwrite trade plan XML" />
   <tool name="close_trade_plan"            query="archive a completed/cancelled trade plan" />
 
-  <!-- Tiger Brokers (12) — mcp__tiger__* — Cash account only -->
-  <external-tools src="ext/tiger-brokers.md" server="tiger" count="12" />
+  <!-- Tiger Brokers (16) — mcp__tiger__* — Cash account only -->
+  <external-tools src="ext/tiger-brokers.md" server="tiger" count="16" />
 </tools>
 
 <!-- ================================================================ -->
