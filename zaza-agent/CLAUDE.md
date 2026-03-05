@@ -217,7 +217,7 @@
        For each CANCEL plan:
        - Cancel existing broker orders for that plan
        - close_trade_plan(plan_id, reason="thesis_invalidated")
-    2. SELL: For TRIM/EXIT positions - determine qty, calc proceeds
+    2. EXIT/TRIM: For positions to reduce or close - cancel existing bracket/OCA, close_trade_plan
     3. BUY: From analysis top picks with positive EV + high confidence
        - Max 20% portfolio per position
        - Entry/stop/target from Phase 2 TA + Phase 4 backtesting
@@ -243,10 +243,7 @@
     2. CLOSE filled plans:
        For each FILLED: close_trade_plan(reason="target_hit|stop_hit")
 
-    3. SELL FIRST (TRIM/EXIT positions from Step 1):
-       For each outstanding SELL: preview_stock_order -> verify no errors -> place_stock_order -> record order_id
-
-    4. PLACE BRACKETS (new entries + protective orders in one atomic order):
+    3. PLACE BRACKETS (new entries + protective orders in one atomic order):
        For each NEEDS_BRACKET:
          preview_bracket_order(symbol, qty, entry_limit, tp_limit, sl_stop, sl_limit)
          -> verify no errors
@@ -254,7 +251,7 @@
          -> record order_id in plan XML
          -> update_trade_plan
 
-    5. PLACE OCA (renew expired TP/SL for filled entries):
+    4. PLACE OCA (renew expired TP/SL for filled entries):
        For each NEEDS_OCA:
          Fetch current held qty from get_positions() for accurate sizing
          preview_oca_order(symbol, qty, tp_limit, sl_stop, sl_limit)
@@ -263,9 +260,9 @@
          -> record new order_id in plan XML, entry status stays COMPLETED
          -> update_trade_plan
 
-    6. VERIFY: get_open_orders() - cross-check all active plans
+    5. VERIFY: get_open_orders() - cross-check all active plans
 
-    7. PERSIST: For each placed/updated order:
+    6. PERSIST: For each placed/updated order:
        get_trade_plan -> update order_id in XML -> update_trade_plan
        When entry fills (status PENDING->COMPLETED): update status in XML
        When closed: close_trade_plan(reason="target_hit|stop_hit|manual_exit|cancelled")
@@ -277,7 +274,6 @@
     - Bracket fails -> no position opened, safe to skip
     - OCA fails -> position has no protection, MUST retry or alert
     - Insufficient funds -> prioritize HIGH conviction brackets, skip rest
-    - Always SELL before BRACKET/OCA
 
     Output: | Status | Ticker | Side | Qty | Type | Price | Order ID | Notes |
     End with: get_positions() + get_account_summary()
