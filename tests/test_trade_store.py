@@ -50,28 +50,28 @@ class TestValidate:
 
     def test_validate_missing_root_attrs(self, store) -> None:
         """Missing ticker or generated attrs on <trade-plan> produces errors."""
-        xml = "<trade-plan><summary><side>BUY</side><ticker>AAPL</ticker><quantity>10</quantity></summary><entry><strategy>s</strategy><trigger>t</trigger><limit-order><order_id>1</order_id><type>LIMIT</type><side>BUY</side><ticker>AAPL</ticker><quantity>10</quantity><limit_price>100</limit_price><time_in_force>DAY</time_in_force></limit-order></entry><exit><stop-loss><limit-order><order_id>2</order_id><type>STOP_LIMIT</type><side>SELL</side><ticker>AAPL</ticker><quantity>10</quantity><limit_price>90</limit_price><time_in_force>GTC</time_in_force></limit-order></stop-loss><take-profit><limit-order><order_id>3</order_id><type>LIMIT</type><side>SELL</side><ticker>AAPL</ticker><quantity>10</quantity><limit_price>110</limit_price><time_in_force>GTC</time_in_force></limit-order></take-profit></exit></trade-plan>"
+        xml = "<trade-plan><summary><side>BUY</side><ticker>AAPL</ticker><quantity>10</quantity></summary><order><order_id>1</order_id><entry><status>PENDING</status><strategy>s</strategy><trigger>t</trigger><limit-order><type>LIMIT</type><side>BUY</side><ticker>AAPL</ticker><quantity>10</quantity><limit_price>100</limit_price><time_in_force>DAY</time_in_force></limit-order></entry><exit><stop-loss><limit-order><type>STOP_LIMIT</type><side>SELL</side><ticker>AAPL</ticker><quantity>10</quantity><stop_price>91</stop_price><limit_price>90</limit_price><time_in_force>GTC</time_in_force></limit-order></stop-loss><take-profit><limit-order><type>LIMIT</type><side>SELL</side><ticker>AAPL</ticker><quantity>10</quantity><limit_price>110</limit_price><time_in_force>GTC</time_in_force></limit-order></take-profit></exit></order></trade-plan>"
         errors = store.validate(xml)
         assert len(errors) > 0
         assert any("ticker" in e.lower() or "generated" in e.lower() for e in errors)
 
     def test_validate_missing_summary(self, store) -> None:
         """XML without <summary> element produces an error."""
-        xml = '<trade-plan ticker="AAPL" generated="2026-02-24 14:30 UTC"><entry><strategy>s</strategy><trigger>t</trigger><limit-order><order_id>1</order_id><type>LIMIT</type><side>BUY</side><ticker>AAPL</ticker><quantity>10</quantity><limit_price>100</limit_price><time_in_force>DAY</time_in_force></limit-order></entry><exit><stop-loss><limit-order><order_id>2</order_id><type>STOP_LIMIT</type><side>SELL</side><ticker>AAPL</ticker><quantity>10</quantity><limit_price>90</limit_price><time_in_force>GTC</time_in_force></limit-order></stop-loss><take-profit><limit-order><order_id>3</order_id><type>LIMIT</type><side>SELL</side><ticker>AAPL</ticker><quantity>10</quantity><limit_price>110</limit_price><time_in_force>GTC</time_in_force></limit-order></take-profit></exit></trade-plan>'
+        xml = '<trade-plan ticker="AAPL" generated="2026-02-24 14:30 UTC"><order><order_id>1</order_id><entry><status>PENDING</status><strategy>s</strategy><trigger>t</trigger><limit-order><type>LIMIT</type><side>BUY</side><ticker>AAPL</ticker><quantity>10</quantity><limit_price>100</limit_price><time_in_force>DAY</time_in_force></limit-order></entry><exit><stop-loss><limit-order><type>STOP_LIMIT</type><side>SELL</side><ticker>AAPL</ticker><quantity>10</quantity><stop_price>91</stop_price><limit_price>90</limit_price><time_in_force>GTC</time_in_force></limit-order></stop-loss><take-profit><limit-order><type>LIMIT</type><side>SELL</side><ticker>AAPL</ticker><quantity>10</quantity><limit_price>110</limit_price><time_in_force>GTC</time_in_force></limit-order></take-profit></exit></order></trade-plan>'
         errors = store.validate(xml)
         assert len(errors) > 0
         assert any("summary" in e.lower() for e in errors)
 
     def test_validate_missing_entry(self, store) -> None:
         """XML without <entry> element produces an error."""
-        xml = '<trade-plan ticker="AAPL" generated="2026-02-24 14:30 UTC"><summary><side>BUY</side><ticker>AAPL</ticker><quantity>10</quantity></summary><exit><stop-loss><limit-order><order_id>2</order_id><type>STOP_LIMIT</type><side>SELL</side><ticker>AAPL</ticker><quantity>10</quantity><limit_price>90</limit_price><time_in_force>GTC</time_in_force></limit-order></stop-loss><take-profit><limit-order><order_id>3</order_id><type>LIMIT</type><side>SELL</side><ticker>AAPL</ticker><quantity>10</quantity><limit_price>110</limit_price><time_in_force>GTC</time_in_force></limit-order></take-profit></exit></trade-plan>'
+        xml = '<trade-plan ticker="AAPL" generated="2026-02-24 14:30 UTC"><summary><side>BUY</side><ticker>AAPL</ticker><quantity>10</quantity></summary><order><order_id>1</order_id><exit><stop-loss><limit-order><type>STOP_LIMIT</type><side>SELL</side><ticker>AAPL</ticker><quantity>10</quantity><stop_price>91</stop_price><limit_price>90</limit_price><time_in_force>GTC</time_in_force></limit-order></stop-loss><take-profit><limit-order><type>LIMIT</type><side>SELL</side><ticker>AAPL</ticker><quantity>10</quantity><limit_price>110</limit_price><time_in_force>GTC</time_in_force></limit-order></take-profit></exit></order></trade-plan>'
         errors = store.validate(xml)
         assert len(errors) > 0
         assert any("entry" in e.lower() for e in errors)
 
     def test_validate_missing_exit(self, store) -> None:
         """XML without <exit> element produces an error."""
-        xml = '<trade-plan ticker="AAPL" generated="2026-02-24 14:30 UTC"><summary><side>BUY</side><ticker>AAPL</ticker><quantity>10</quantity></summary><entry><strategy>s</strategy><trigger>t</trigger><limit-order><order_id>1</order_id><type>LIMIT</type><side>BUY</side><ticker>AAPL</ticker><quantity>10</quantity><limit_price>100</limit_price><time_in_force>DAY</time_in_force></limit-order></entry></trade-plan>'
+        xml = '<trade-plan ticker="AAPL" generated="2026-02-24 14:30 UTC"><summary><side>BUY</side><ticker>AAPL</ticker><quantity>10</quantity></summary><order><order_id>1</order_id><entry><status>PENDING</status><strategy>s</strategy><trigger>t</trigger><limit-order><type>LIMIT</type><side>BUY</side><ticker>AAPL</ticker><quantity>10</quantity><limit_price>100</limit_price><time_in_force>DAY</time_in_force></limit-order></entry></order></trade-plan>'
         errors = store.validate(xml)
         assert len(errors) > 0
         assert any("exit" in e.lower() for e in errors)
@@ -94,12 +94,46 @@ class TestValidate:
         errors = store.validate(xml)
         assert len(errors) > 0
 
-    def test_validate_empty_limit_order_fields(self, store) -> None:
-        """Empty text in limit-order fields produces validation errors (CR-07)."""
-        xml = '<trade-plan ticker="AAPL" generated="2026-02-24 14:30 UTC"><summary><side>BUY</side><ticker>AAPL</ticker><quantity>10</quantity></summary><entry><strategy>s</strategy><trigger>t</trigger><limit-order><order_id></order_id><type>LIMIT</type><side>BUY</side><ticker>AAPL</ticker><quantity>10</quantity><limit_price>100</limit_price><time_in_force>DAY</time_in_force></limit-order></entry><exit><stop-loss><limit-order><order_id>2</order_id><type>STOP_LIMIT</type><side>SELL</side><ticker>AAPL</ticker><quantity>10</quantity><limit_price>90</limit_price><time_in_force>GTC</time_in_force></limit-order></stop-loss><take-profit><limit-order><order_id>3</order_id><type>LIMIT</type><side>SELL</side><ticker>AAPL</ticker><quantity>10</quantity><limit_price>110</limit_price><time_in_force>GTC</time_in_force></limit-order></take-profit></exit></trade-plan>'
+    def test_validate_missing_order_wrapper(self, store) -> None:
+        """XML with <entry>/<exit> at root level (no <order> wrapper) produces an error."""
+        xml = '<trade-plan ticker="AAPL" generated="2026-02-24 14:30 UTC"><summary><side>BUY</side><ticker>AAPL</ticker><quantity>10</quantity></summary><entry><status>PENDING</status><strategy>s</strategy><trigger>t</trigger><limit-order><type>LIMIT</type><side>BUY</side><ticker>AAPL</ticker><quantity>10</quantity><limit_price>100</limit_price><time_in_force>DAY</time_in_force></limit-order></entry><exit><stop-loss><limit-order><type>STOP_LIMIT</type><side>SELL</side><ticker>AAPL</ticker><quantity>10</quantity><stop_price>91</stop_price><limit_price>90</limit_price><time_in_force>GTC</time_in_force></limit-order></stop-loss><take-profit><limit-order><type>LIMIT</type><side>SELL</side><ticker>AAPL</ticker><quantity>10</quantity><limit_price>110</limit_price><time_in_force>GTC</time_in_force></limit-order></take-profit></exit></trade-plan>'
         errors = store.validate(xml)
         assert len(errors) > 0
-        assert any("empty" in e.lower() and "order_id" in e for e in errors)
+        assert any("order" in e.lower() for e in errors)
+
+    def test_validate_missing_order_id_in_order(self, store) -> None:
+        """XML without <order_id> inside <order> produces an error."""
+        xml = '<trade-plan ticker="AAPL" generated="2026-02-24 14:30 UTC"><summary><side>BUY</side><ticker>AAPL</ticker><quantity>10</quantity></summary><order><entry><status>PENDING</status><strategy>s</strategy><trigger>t</trigger><limit-order><type>LIMIT</type><side>BUY</side><ticker>AAPL</ticker><quantity>10</quantity><limit_price>100</limit_price><time_in_force>DAY</time_in_force></limit-order></entry><exit><stop-loss><limit-order><type>STOP_LIMIT</type><side>SELL</side><ticker>AAPL</ticker><quantity>10</quantity><stop_price>91</stop_price><limit_price>90</limit_price><time_in_force>GTC</time_in_force></limit-order></stop-loss><take-profit><limit-order><type>LIMIT</type><side>SELL</side><ticker>AAPL</ticker><quantity>10</quantity><limit_price>110</limit_price><time_in_force>GTC</time_in_force></limit-order></take-profit></exit></order></trade-plan>'
+        errors = store.validate(xml)
+        assert len(errors) > 0
+        assert any("order_id" in e for e in errors)
+
+    def test_validate_missing_status_in_entry(self, store) -> None:
+        """XML without <status> inside <entry> produces an error."""
+        xml = '<trade-plan ticker="AAPL" generated="2026-02-24 14:30 UTC"><summary><side>BUY</side><ticker>AAPL</ticker><quantity>10</quantity></summary><order><order_id>1</order_id><entry><strategy>s</strategy><trigger>t</trigger><limit-order><type>LIMIT</type><side>BUY</side><ticker>AAPL</ticker><quantity>10</quantity><limit_price>100</limit_price><time_in_force>DAY</time_in_force></limit-order></entry><exit><stop-loss><limit-order><type>STOP_LIMIT</type><side>SELL</side><ticker>AAPL</ticker><quantity>10</quantity><stop_price>91</stop_price><limit_price>90</limit_price><time_in_force>GTC</time_in_force></limit-order></stop-loss><take-profit><limit-order><type>LIMIT</type><side>SELL</side><ticker>AAPL</ticker><quantity>10</quantity><limit_price>110</limit_price><time_in_force>GTC</time_in_force></limit-order></take-profit></exit></order></trade-plan>'
+        errors = store.validate(xml)
+        assert len(errors) > 0
+        assert any("status" in e.lower() for e in errors)
+
+    def test_validate_missing_stop_price_for_stop_limit(self, store) -> None:
+        """STOP_LIMIT limit-order without <stop_price> produces an error."""
+        xml = '<trade-plan ticker="AAPL" generated="2026-02-24 14:30 UTC"><summary><side>BUY</side><ticker>AAPL</ticker><quantity>10</quantity></summary><order><order_id>1</order_id><entry><status>PENDING</status><strategy>s</strategy><trigger>t</trigger><limit-order><type>LIMIT</type><side>BUY</side><ticker>AAPL</ticker><quantity>10</quantity><limit_price>100</limit_price><time_in_force>DAY</time_in_force></limit-order></entry><exit><stop-loss><limit-order><type>STOP_LIMIT</type><side>SELL</side><ticker>AAPL</ticker><quantity>10</quantity><limit_price>90</limit_price><time_in_force>GTC</time_in_force></limit-order></stop-loss><take-profit><limit-order><type>LIMIT</type><side>SELL</side><ticker>AAPL</ticker><quantity>10</quantity><limit_price>110</limit_price><time_in_force>GTC</time_in_force></limit-order></take-profit></exit></order></trade-plan>'
+        errors = store.validate(xml)
+        assert len(errors) > 0
+        assert any("stop_price" in e for e in errors)
+
+    def test_validate_stop_price_not_required_for_limit(self, store) -> None:
+        """LIMIT type limit-order does NOT require <stop_price>."""
+        errors = store.validate(VALID_TRADE_XML)
+        # The valid XML has a LIMIT entry order without stop_price - should pass
+        assert errors == []
+
+    def test_validate_empty_limit_order_fields(self, store) -> None:
+        """Empty text in limit-order fields produces validation errors (CR-07)."""
+        xml = '<trade-plan ticker="AAPL" generated="2026-02-24 14:30 UTC"><summary><side>BUY</side><ticker>AAPL</ticker><quantity>10</quantity></summary><order><order_id>1</order_id><entry><status>PENDING</status><strategy>s</strategy><trigger>t</trigger><limit-order><type></type><side>BUY</side><ticker>AAPL</ticker><quantity>10</quantity><limit_price>100</limit_price><time_in_force>DAY</time_in_force></limit-order></entry><exit><stop-loss><limit-order><type>STOP_LIMIT</type><side>SELL</side><ticker>AAPL</ticker><quantity>10</quantity><stop_price>91</stop_price><limit_price>90</limit_price><time_in_force>GTC</time_in_force></limit-order></stop-loss><take-profit><limit-order><type>LIMIT</type><side>SELL</side><ticker>AAPL</ticker><quantity>10</quantity><limit_price>110</limit_price><time_in_force>GTC</time_in_force></limit-order></take-profit></exit></order></trade-plan>'
+        errors = store.validate(xml)
+        assert len(errors) > 0
+        assert any("empty" in e.lower() and "type" in e for e in errors)
 
 
 # ---------------------------------------------------------------------------

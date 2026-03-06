@@ -29,43 +29,45 @@ VALID_TRADE_XML = """\
     <risk_reward_ratio>1:2.5</risk_reward_ratio>
     <rationale>RSI bouncing off 38 with bullish MACD crossover</rationale>
   </summary>
-  <entry>
-    <strategy>support_bounce</strategy>
-    <trigger>Price holds above $183.50</trigger>
-    <limit-order>
-      <order_id>BUY-AAPL-20260224-001</order_id>
-      <type>LIMIT</type>
-      <side>BUY</side>
-      <ticker>AAPL</ticker>
-      <quantity>50</quantity>
-      <limit_price>184.00</limit_price>
-      <time_in_force>DAY</time_in_force>
-    </limit-order>
-  </entry>
-  <exit>
-    <stop-loss>
+  <order>
+    <order_id>BUY-AAPL-20260224-001</order_id>
+    <entry>
+      <status>PENDING</status>
+      <strategy>support_bounce</strategy>
+      <trigger>Price holds above $183.50</trigger>
       <limit-order>
-        <order_id>BUY-AAPL-20260224-001-SL</order_id>
-        <type>STOP_LIMIT</type>
-        <side>SELL</side>
-        <ticker>AAPL</ticker>
-        <quantity>50</quantity>
-        <limit_price>179.50</limit_price>
-        <time_in_force>GTC</time_in_force>
-      </limit-order>
-    </stop-loss>
-    <take-profit>
-      <limit-order>
-        <order_id>BUY-AAPL-20260224-001-TP</order_id>
         <type>LIMIT</type>
-        <side>SELL</side>
+        <side>BUY</side>
         <ticker>AAPL</ticker>
         <quantity>50</quantity>
-        <limit_price>194.50</limit_price>
-        <time_in_force>GTC</time_in_force>
+        <limit_price>184.00</limit_price>
+        <time_in_force>DAY</time_in_force>
       </limit-order>
-    </take-profit>
-  </exit>
+    </entry>
+    <exit>
+      <stop-loss>
+        <limit-order>
+          <type>STOP_LIMIT</type>
+          <side>SELL</side>
+          <ticker>AAPL</ticker>
+          <quantity>50</quantity>
+          <stop_price>180.00</stop_price>
+          <limit_price>179.50</limit_price>
+          <time_in_force>DAY</time_in_force>
+        </limit-order>
+      </stop-loss>
+      <take-profit>
+        <limit-order>
+          <type>LIMIT</type>
+          <side>SELL</side>
+          <ticker>AAPL</ticker>
+          <quantity>50</quantity>
+          <limit_price>194.50</limit_price>
+          <time_in_force>DAY</time_in_force>
+        </limit-order>
+      </take-profit>
+    </exit>
+  </order>
 </trade-plan>
 """
 
