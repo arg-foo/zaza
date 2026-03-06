@@ -161,7 +161,7 @@ async def main() -> None:
     if ZAZA_MCP_TRANSPORT == "streamable-http":
         mcp.settings.host = ZAZA_MCP_HOST
         mcp.settings.port = ZAZA_MCP_PORT
-        # Allow Docker service-name access (consumer connects via http://zaza:8100/mcp)
+        # Allow Docker service-name access
         mcp.settings.transport_security.allowed_hosts.append("zaza:*")
         mcp.settings.transport_security.allowed_origins.append("http://zaza:*")
         await mcp.run_streamable_http_async()
