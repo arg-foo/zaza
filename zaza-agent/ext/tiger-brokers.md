@@ -1,5 +1,5 @@
 <!-- Tiger Brokers Cash MCP -->
-<!-- Server: tiger | Transport: stdin/stdout | Tools: 15 | Domains: 5 -->
+<!-- Server: tiger | Transport: stdin/stdout | Tools: 13 | Domains: 5 -->
 <!-- Cash account trading. Tools appear as mcp__tiger__tool_name. -->
 
 <tiger-tools>
@@ -28,28 +28,13 @@
   </tool>
   <tool name="cancel_all_orders"       query="cancel all open orders" />
 
-  <!-- OCA & Bracket (4) -->
-  <tool name="preview_oca_order"       query="dry-run OCA SELL (TP + SL) to protect existing long. Safety checks, cost estimate. Not submitted.">
-    <param name="symbol"         type="str"   required="yes" description="uppercase ticker" />
-    <param name="quantity"       type="int"   required="yes" description="positive integer, <= held shares" />
-    <param name="tp_limit_price" type="float" required="yes" description="take-profit limit price, must be > sl_stop_price" />
-    <param name="sl_stop_price"  type="float" required="yes" description="stop-loss trigger price, must be >= sl_limit_price" />
-    <param name="sl_limit_price" type="float" required="yes" description="stop-loss execution floor" />
-  </tool>
+  <!-- OCA & Bracket (2) -->
   <tool name="place_oca_order"         query="submit OCA SELL (TP + SL). One leg fills, other auto-cancels. Blocked if safety errors.">
     <param name="symbol"         type="str"   required="yes" description="uppercase ticker" />
     <param name="quantity"       type="int"   required="yes" description="positive integer, <= held shares" />
     <param name="tp_limit_price" type="float" required="yes" description="take-profit limit price, must be > sl_stop_price" />
     <param name="sl_stop_price"  type="float" required="yes" description="stop-loss trigger price, must be >= sl_limit_price" />
     <param name="sl_limit_price" type="float" required="yes" description="stop-loss execution floor" />
-  </tool>
-  <tool name="preview_bracket_order"   query="dry-run bracket BUY (entry + TP + SL). Entry fills activates OCA TP/SL pair. Not submitted.">
-    <param name="symbol"            type="str"   required="yes" description="uppercase ticker" />
-    <param name="quantity"          type="int"   required="yes" description="positive integer" />
-    <param name="entry_limit_price" type="float" required="yes" description="entry BUY limit price" />
-    <param name="tp_limit_price"    type="float" required="yes" description="take-profit price, must be > entry_limit_price" />
-    <param name="sl_stop_price"     type="float" required="yes" description="stop-loss trigger, must be < entry_limit_price" />
-    <param name="sl_limit_price"    type="float" required="yes" description="stop-loss execution floor, must be <= sl_stop_price" />
   </tool>
   <tool name="place_bracket_order"     query="submit bracket BUY (entry + TP + SL). Entry fills activates OCA pair. Blocked if safety errors.">
     <param name="symbol"            type="str"   required="yes" description="uppercase ticker" />

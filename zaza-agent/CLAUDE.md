@@ -114,7 +114,7 @@
   <tool name="close_trade_plan"            query="archive a completed/cancelled trade plan" />
 
   <!-- Tiger Brokers (16) — mcp__tiger__* — Cash account only -->
-  <external-tools src="ext/tiger-brokers.md" server="tiger" count="15" />
+  <external-tools src="ext/tiger-brokers.md" server="tiger" count="13" />
 </tools>
 
 <!-- ================================================================ -->
@@ -245,18 +245,16 @@
 
     3. PLACE BRACKETS (new entries + protective orders in one atomic order):
        For each NEEDS_BRACKET:
-         preview_bracket_order(symbol, qty, entry_limit, tp_limit, sl_stop, sl_limit)
-         -> verify no errors
-         -> place_bracket_order(same params)
+         place_bracket_order(symbol, qty, entry_limit, tp_limit, sl_stop, sl_limit)
+         -> verify no errors in response
          -> record order_id in plan XML
          -> update_trade_plan
 
     4. PLACE OCA (renew expired TP/SL for filled entries):
        For each NEEDS_OCA:
          Fetch current held qty from get_positions() for accurate sizing
-         preview_oca_order(symbol, qty, tp_limit, sl_stop, sl_limit)
-         -> verify no errors
-         -> place_oca_order(same params)
+         place_oca_order(symbol, qty, tp_limit, sl_stop, sl_limit)
+         -> verify no errors in response
          -> record new order_id in plan XML, entry status stays COMPLETED
          -> update_trade_plan
 
@@ -270,8 +268,6 @@
     Constraint: NEVER place an order without both a stop-loss and a take-profit. All orders must use place_bracket_order or place_oca_order.
 
     Error rules:
-    - Preview ERROR -> skip, log
-    - Preview WARNING -> proceed, note
     - Place fails -> retry once, then skip
     - Bracket fails -> no position opened, safe to skip
     - OCA fails -> position has no protection, MUST retry or alert
