@@ -41,6 +41,9 @@ def migrate_xml(xml_string: str) -> tuple[str, list[str]]:
     """
     changes: list[str] = []
 
+    if "<!DOCTYPE" in xml_string.upper() or "<!ENTITY" in xml_string.upper():
+        return xml_string, ["SKIP: DTD/entity declarations rejected"]
+
     try:
         root = ET.fromstring(xml_string)
     except ET.ParseError as exc:

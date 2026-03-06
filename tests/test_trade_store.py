@@ -94,6 +94,13 @@ class TestValidate:
         errors = store.validate(xml)
         assert len(errors) > 0
 
+    def test_validate_rejects_doctype_case_insensitive(self, store) -> None:
+        """XML with mixed-case DOCTYPE is rejected (case-insensitive XXE guard)."""
+        xml = '<!doctype foo [<!entity xxe "test">]><trade-plan ticker="AAPL" generated="now"></trade-plan>'
+        errors = store.validate(xml)
+        assert len(errors) > 0
+        assert any("DTD" in e or "entity" in e.lower() for e in errors)
+
     def test_validate_missing_order_wrapper(self, store) -> None:
         """XML with <entry>/<exit> at root level (no <order> wrapper) produces an error."""
         xml = '<trade-plan ticker="AAPL" generated="2026-02-24 14:30 UTC"><summary><side>BUY</side><ticker>AAPL</ticker><quantity>10</quantity></summary><entry><status>PENDING</status><strategy>s</strategy><trigger>t</trigger><limit-order><type>LIMIT</type><side>BUY</side><ticker>AAPL</ticker><quantity>10</quantity><limit_price>100</limit_price><time_in_force>DAY</time_in_force></limit-order></entry><exit><stop-loss><limit-order><type>STOP_LIMIT</type><side>SELL</side><ticker>AAPL</ticker><quantity>10</quantity><stop_price>91</stop_price><limit_price>90</limit_price><time_in_force>GTC</time_in_force></limit-order></stop-loss><take-profit><limit-order><type>LIMIT</type><side>SELL</side><ticker>AAPL</ticker><quantity>10</quantity><limit_price>110</limit_price><time_in_force>GTC</time_in_force></limit-order></take-profit></exit></trade-plan>'

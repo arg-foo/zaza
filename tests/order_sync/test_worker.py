@@ -272,15 +272,11 @@ class TestWorkerRun:
         """When Zaza returns no active plans, return 0."""
         from order_sync.worker import run
 
-        list_resp = _make_mcp_response(
-            json.dumps({"status": "ok", "plans": []})
-        )
-
         with (
-            patch("order_sync.worker._connect_and_call") as mock_connect,
+            patch("order_sync.worker._fetch_plans") as mock_plans,
+            patch("order_sync.worker.streamable_http_client", create=True),
         ):
-            # _connect_and_call for Zaza list_trade_plans returns empty
-            mock_connect.return_value = ([], [], [])
+            mock_plans.return_value = []
 
             exit_code = await run(dry_run=False)
             assert exit_code == 0
@@ -303,8 +299,20 @@ class TestWorkerRun:
             tp_limit_price=194.50,
         )
 
-        with patch("order_sync.worker._connect_and_call") as mock_connect:
-            mock_connect.return_value = ([plan], [], [])
+        with (
+            patch("order_sync.worker._fetch_plans") as mock_plans,
+            patch("order_sync.worker._fetch_tiger_state") as mock_tiger,
+            patch("order_sync.worker.streamable_http_client", create=True) as mock_http,
+            patch("order_sync.worker.ClientSession", create=True) as mock_cs,
+        ):
+            mock_plans.return_value = [plan]
+            mock_tiger.return_value = ([], [])
+            # Mock the Tiger session context managers
+            mock_session = AsyncMock()
+            mock_cs.return_value.__aenter__ = AsyncMock(return_value=mock_session)
+            mock_cs.return_value.__aexit__ = AsyncMock(return_value=False)
+            mock_http.return_value.__aenter__ = AsyncMock(return_value=(None, None, None))
+            mock_http.return_value.__aexit__ = AsyncMock(return_value=False)
 
             exit_code = await run(dry_run=True)
             assert exit_code == 0
@@ -328,16 +336,25 @@ class TestWorkerRun:
         )
 
         with (
-            patch("order_sync.worker._connect_and_call") as mock_connect,
-            patch("order_sync.worker._place_orders") as mock_place,
+            patch("order_sync.worker._fetch_plans") as mock_plans,
+            patch("order_sync.worker._fetch_tiger_state") as mock_tiger,
+            patch("order_sync.worker.place_orders") as mock_place,
+            patch("order_sync.worker.streamable_http_client", create=True) as mock_http,
+            patch("order_sync.worker.ClientSession", create=True) as mock_cs,
         ):
-            mock_connect.return_value = ([plan], [], [])
+            mock_plans.return_value = [plan]
+            mock_tiger.return_value = ([], [])
             mock_place.return_value = [
                 OrderResult(
                     plan_id="p1", ticker="AAPL", action="BRACKET",
                     success=True, order_id="12345", error=None,
                 )
             ]
+            mock_session = AsyncMock()
+            mock_cs.return_value.__aenter__ = AsyncMock(return_value=mock_session)
+            mock_cs.return_value.__aexit__ = AsyncMock(return_value=False)
+            mock_http.return_value.__aenter__ = AsyncMock(return_value=(None, None, None))
+            mock_http.return_value.__aexit__ = AsyncMock(return_value=False)
 
             exit_code = await run(dry_run=False)
             assert exit_code == 0
@@ -362,11 +379,14 @@ class TestWorkerRun:
         )
 
         with (
-            patch("order_sync.worker._connect_and_call") as mock_connect,
-            patch("order_sync.worker._place_orders") as mock_place,
+            patch("order_sync.worker._fetch_plans") as mock_plans,
+            patch("order_sync.worker._fetch_tiger_state") as mock_tiger,
+            patch("order_sync.worker.place_orders") as mock_place,
+            patch("order_sync.worker.streamable_http_client", create=True) as mock_http,
+            patch("order_sync.worker.ClientSession", create=True) as mock_cs,
         ):
-            mock_connect.return_value = (
-                [plan],
+            mock_plans.return_value = [plan]
+            mock_tiger.return_value = (
                 [{"symbol": "AAPL", "quantity": 50}],  # position
                 [],  # no orders
             )
@@ -376,6 +396,11 @@ class TestWorkerRun:
                     success=False, order_id=None, error="Timeout",
                 )
             ]
+            mock_session = AsyncMock()
+            mock_cs.return_value.__aenter__ = AsyncMock(return_value=mock_session)
+            mock_cs.return_value.__aexit__ = AsyncMock(return_value=False)
+            mock_http.return_value.__aenter__ = AsyncMock(return_value=(None, None, None))
+            mock_http.return_value.__aexit__ = AsyncMock(return_value=False)
 
             exit_code = await run(dry_run=False)
             assert exit_code == 2
@@ -399,16 +424,25 @@ class TestWorkerRun:
         )
 
         with (
-            patch("order_sync.worker._connect_and_call") as mock_connect,
-            patch("order_sync.worker._place_orders") as mock_place,
+            patch("order_sync.worker._fetch_plans") as mock_plans,
+            patch("order_sync.worker._fetch_tiger_state") as mock_tiger,
+            patch("order_sync.worker.place_orders") as mock_place,
+            patch("order_sync.worker.streamable_http_client", create=True) as mock_http,
+            patch("order_sync.worker.ClientSession", create=True) as mock_cs,
         ):
-            mock_connect.return_value = ([plan], [], [])
+            mock_plans.return_value = [plan]
+            mock_tiger.return_value = ([], [])
             mock_place.return_value = [
                 OrderResult(
                     plan_id="p1", ticker="AAPL", action="BRACKET",
                     success=False, order_id=None, error="Timeout",
                 )
             ]
+            mock_session = AsyncMock()
+            mock_cs.return_value.__aenter__ = AsyncMock(return_value=mock_session)
+            mock_cs.return_value.__aexit__ = AsyncMock(return_value=False)
+            mock_http.return_value.__aenter__ = AsyncMock(return_value=(None, None, None))
+            mock_http.return_value.__aexit__ = AsyncMock(return_value=False)
 
             exit_code = await run(dry_run=False)
             assert exit_code == 1
@@ -438,8 +472,19 @@ class TestWorkerRun:
             "quantity": 50,
         }
 
-        with patch("order_sync.worker._connect_and_call") as mock_connect:
-            mock_connect.return_value = ([plan], [], [buy_order])
+        with (
+            patch("order_sync.worker._fetch_plans") as mock_plans,
+            patch("order_sync.worker._fetch_tiger_state") as mock_tiger,
+            patch("order_sync.worker.streamable_http_client", create=True) as mock_http,
+            patch("order_sync.worker.ClientSession", create=True) as mock_cs,
+        ):
+            mock_plans.return_value = [plan]
+            mock_tiger.return_value = ([], [buy_order])
+            mock_session = AsyncMock()
+            mock_cs.return_value.__aenter__ = AsyncMock(return_value=mock_session)
+            mock_cs.return_value.__aexit__ = AsyncMock(return_value=False)
+            mock_http.return_value.__aenter__ = AsyncMock(return_value=(None, None, None))
+            mock_http.return_value.__aexit__ = AsyncMock(return_value=False)
 
             exit_code = await run(dry_run=False)
             assert exit_code == 0

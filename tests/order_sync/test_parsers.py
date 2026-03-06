@@ -244,6 +244,14 @@ class TestParseTradePlan:
         xml = "<something><summary><side>BUY</side></summary></something>"
         assert parse_trade_plan(xml) is None
 
+    def test_non_numeric_quantity_returns_none(self) -> None:
+        """Non-numeric quantity in <summary> returns None."""
+        xml = VALID_TRADE_XML.replace(
+            "<quantity>50</quantity>",
+            "<quantity>abc</quantity>",
+        )
+        assert parse_trade_plan(xml) is None
+
     def test_plan_id_not_set_by_parser(self) -> None:
         """plan_id should be empty string by default (set externally)."""
         plan = parse_trade_plan(VALID_TRADE_XML)

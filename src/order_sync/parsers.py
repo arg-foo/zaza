@@ -120,11 +120,16 @@ def parse_trade_plan(xml_string: str | None) -> TradePlan | None:
 
     tp_limit_elem = tp_lo.find("limit_price")
 
+    try:
+        quantity = int(float((quantity_elem.text or "0").strip()))
+    except (ValueError, TypeError):
+        return None
+
     return TradePlan(
         plan_id="",  # Set externally
         ticker=root.get("ticker", ""),
         side=(side_elem.text or "").strip(),
-        quantity=int(float((quantity_elem.text or "0").strip())),
+        quantity=quantity,
         order_id=(order_id_elem.text or "").strip(),
         entry_status=(status_elem.text or "").strip() if status_elem is not None else "",
         entry_limit_price=_safe_float(entry_limit_elem),

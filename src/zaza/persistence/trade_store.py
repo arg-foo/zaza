@@ -47,7 +47,8 @@ def _safe_parse_xml(xml_string: str) -> ET.Element:
     Raises:
         ET.ParseError: If the XML contains DTD/entity declarations or is malformed.
     """
-    if "<!DOCTYPE" in xml_string or "<!ENTITY" in xml_string:
+    upper = xml_string.upper()
+    if "<!DOCTYPE" in upper or "<!ENTITY" in upper:
         raise ET.ParseError("DTD and entity declarations are not allowed")
     return ET.fromstring(xml_string)
 

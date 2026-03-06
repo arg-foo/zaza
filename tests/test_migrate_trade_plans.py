@@ -194,6 +194,15 @@ class TestMigrateXml:
         assert len(changes) == 1
         assert "SKIP" in changes[0]
 
+    def test_migrate_rejects_xxe_case_insensitive(self) -> None:
+        """XML with mixed-case DOCTYPE/ENTITY is rejected."""
+        xml = '<!doctype foo [<!entity xxe "test">]><trade-plan><entry/></trade-plan>'
+        migrated, changes = migrate_xml(xml)
+        assert migrated == xml
+        assert len(changes) == 1
+        assert "SKIP" in changes[0]
+        assert "DTD" in changes[0] or "entity" in changes[0].lower()
+
     def test_migrate_skips_non_trade_plan_root(self) -> None:
         """XML with wrong root element is skipped."""
         xml = "<not-a-trade-plan><entry/></not-a-trade-plan>"
@@ -201,13 +210,13 @@ class TestMigrateXml:
         assert migrated == xml
         assert any("SKIP" in c for c in changes)
 
-    def test_migrated_xml_passes_new_validation(self) -> None:
+    def test_migrated_xml_passes_new_validation(self, tmp_path: Path) -> None:
         """Migrated XML passes the new TradeXmlStore.validate()."""
         from zaza.persistence.trade_store import TradeXmlStore
 
         store = TradeXmlStore(
-            active_dir=Path("/tmp/test_active"),
-            archive_dir=Path("/tmp/test_archive"),
+            active_dir=tmp_path / "test_active",
+            archive_dir=tmp_path / "test_archive",
         )
         migrated, changes = migrate_xml(OLD_SCHEMA_XML)
         errors = store.validate(migrated)

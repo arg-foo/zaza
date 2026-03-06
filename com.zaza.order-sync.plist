@@ -1,0 +1,84 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+    <key>Label</key>
+    <string>com.zaza.order-sync</string>
+
+    <key>ProgramArguments</key>
+    <array>
+        <string>/Users/zifcrypto/.local/bin/uv</string>
+        <string>run</string>
+        <string>python</string>
+        <string>-m</string>
+        <string>order_sync</string>
+    </array>
+
+    <key>WorkingDirectory</key>
+    <string>/Users/zifcrypto/Desktop/zaza</string>
+
+    <!-- Run at 9:25 AM ET weekdays only -->
+    <!-- EST = UTC-5 → 14:25 UTC; EDT = UTC-4 → 13:25 UTC -->
+    <!-- Using 13:25 UTC (EDT) as default; adjust for EST if needed -->
+    <key>StartCalendarInterval</key>
+    <array>
+        <!-- Monday -->
+        <dict>
+            <key>Weekday</key>
+            <integer>1</integer>
+            <key>Hour</key>
+            <integer>13</integer>
+            <key>Minute</key>
+            <integer>25</integer>
+        </dict>
+        <!-- Tuesday -->
+        <dict>
+            <key>Weekday</key>
+            <integer>2</integer>
+            <key>Hour</key>
+            <integer>13</integer>
+            <key>Minute</key>
+            <integer>25</integer>
+        </dict>
+        <!-- Wednesday -->
+        <dict>
+            <key>Weekday</key>
+            <integer>3</integer>
+            <key>Hour</key>
+            <integer>13</integer>
+            <key>Minute</key>
+            <integer>25</integer>
+        </dict>
+        <!-- Thursday -->
+        <dict>
+            <key>Weekday</key>
+            <integer>4</integer>
+            <key>Hour</key>
+            <integer>13</integer>
+            <key>Minute</key>
+            <integer>25</integer>
+        </dict>
+        <!-- Friday -->
+        <dict>
+            <key>Weekday</key>
+            <integer>5</integer>
+            <key>Hour</key>
+            <integer>13</integer>
+            <key>Minute</key>
+            <integer>25</integer>
+        </dict>
+    </array>
+
+    <key>StandardOutPath</key>
+    <string>/Users/zifcrypto/.zaza/logs/order_sync_stdout.log</string>
+
+    <key>StandardErrorPath</key>
+    <string>/Users/zifcrypto/.zaza/logs/order_sync_stderr.log</string>
+
+    <key>EnvironmentVariables</key>
+    <dict>
+        <key>PATH</key>
+        <string>/Users/zifcrypto/.local/bin:/usr/local/bin:/usr/bin:/bin</string>
+    </dict>
+</dict>
+</plist>

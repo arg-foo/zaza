@@ -55,6 +55,31 @@ def compute_order_intents(
     """
     intents: list[OrderIntent] = []
 
+    def _validate_bracket_prices(plan: TradePlan) -> str | None:
+        """Return error string if any BRACKET price is <= 0, else None."""
+        checks = {
+            "entry_limit_price": plan.entry_limit_price,
+            "tp_limit_price": plan.tp_limit_price,
+            "sl_stop_price": plan.sl_stop_price,
+            "sl_limit_price": plan.sl_limit_price,
+        }
+        invalid = [k for k, v in checks.items() if v <= 0]
+        if invalid:
+            return f"Zero or negative price: {', '.join(invalid)}"
+        return None
+
+    def _validate_oca_prices(plan: TradePlan) -> str | None:
+        """Return error string if any OCA price is <= 0, else None."""
+        checks = {
+            "tp_limit_price": plan.tp_limit_price,
+            "sl_stop_price": plan.sl_stop_price,
+            "sl_limit_price": plan.sl_limit_price,
+        }
+        invalid = [k for k, v in checks.items() if v <= 0]
+        if invalid:
+            return f"Zero or negative price: {', '.join(invalid)}"
+        return None
+
     for plan in plans:
         ticker_buy_orders = [
             o for o in open_orders
@@ -71,7 +96,48 @@ def compute_order_intents(
         )
 
         if plan.entry_status == "PENDING":
-            if ticker_buy_orders:
+            if held_qty > 0:
+                # PENDING but position already held — entry likely filled,
+                # XML not yet updated. Emit OCA to protect the position.
+                oca_qty = min(plan.quantity, held_qty)
+                price_err = _validate_oca_prices(plan)
+                if price_err:
+                    intents.append(OrderIntent(
+                        plan_id=plan.plan_id,
+                        ticker=plan.ticker,
+                        action="SKIP",
+                        reason=price_err,
+                        entry_limit_price=None,
+                        quantity=oca_qty,
+                        tp_limit_price=plan.tp_limit_price,
+                        sl_stop_price=plan.sl_stop_price,
+                        sl_limit_price=plan.sl_limit_price,
+                    ))
+                elif ticker_sell_orders:
+                    intents.append(OrderIntent(
+                        plan_id=plan.plan_id,
+                        ticker=plan.ticker,
+                        action="SKIP",
+                        reason="PENDING with position held but existing SELL orders found",
+                        entry_limit_price=None,
+                        quantity=oca_qty,
+                        tp_limit_price=plan.tp_limit_price,
+                        sl_stop_price=plan.sl_stop_price,
+                        sl_limit_price=plan.sl_limit_price,
+                    ))
+                else:
+                    intents.append(OrderIntent(
+                        plan_id=plan.plan_id,
+                        ticker=plan.ticker,
+                        action="OCA",
+                        reason="PENDING but position already held, protecting with OCA",
+                        entry_limit_price=None,
+                        quantity=oca_qty,
+                        tp_limit_price=plan.tp_limit_price,
+                        sl_stop_price=plan.sl_stop_price,
+                        sl_limit_price=plan.sl_limit_price,
+                    ))
+            elif ticker_buy_orders:
                 intents.append(OrderIntent(
                     plan_id=plan.plan_id,
                     ticker=plan.ticker,
@@ -84,17 +150,31 @@ def compute_order_intents(
                     sl_limit_price=plan.sl_limit_price,
                 ))
             else:
-                intents.append(OrderIntent(
-                    plan_id=plan.plan_id,
-                    ticker=plan.ticker,
-                    action="BRACKET",
-                    reason="Entry pending, no existing BUY order",
-                    entry_limit_price=plan.entry_limit_price,
-                    quantity=plan.quantity,
-                    tp_limit_price=plan.tp_limit_price,
-                    sl_stop_price=plan.sl_stop_price,
-                    sl_limit_price=plan.sl_limit_price,
-                ))
+                price_err = _validate_bracket_prices(plan)
+                if price_err:
+                    intents.append(OrderIntent(
+                        plan_id=plan.plan_id,
+                        ticker=plan.ticker,
+                        action="SKIP",
+                        reason=price_err,
+                        entry_limit_price=plan.entry_limit_price,
+                        quantity=plan.quantity,
+                        tp_limit_price=plan.tp_limit_price,
+                        sl_stop_price=plan.sl_stop_price,
+                        sl_limit_price=plan.sl_limit_price,
+                    ))
+                else:
+                    intents.append(OrderIntent(
+                        plan_id=plan.plan_id,
+                        ticker=plan.ticker,
+                        action="BRACKET",
+                        reason="Entry pending, no existing BUY order",
+                        entry_limit_price=plan.entry_limit_price,
+                        quantity=plan.quantity,
+                        tp_limit_price=plan.tp_limit_price,
+                        sl_stop_price=plan.sl_stop_price,
+                        sl_limit_price=plan.sl_limit_price,
+                    ))
         elif plan.entry_status == "COMPLETED":
             if held_qty <= 0:
                 intents.append(OrderIntent(
@@ -122,17 +202,31 @@ def compute_order_intents(
                 ))
             else:
                 oca_qty = min(plan.quantity, held_qty)
-                intents.append(OrderIntent(
-                    plan_id=plan.plan_id,
-                    ticker=plan.ticker,
-                    action="OCA",
-                    reason="Position held, no existing SELL orders",
-                    entry_limit_price=None,
-                    quantity=oca_qty,
-                    tp_limit_price=plan.tp_limit_price,
-                    sl_stop_price=plan.sl_stop_price,
-                    sl_limit_price=plan.sl_limit_price,
-                ))
+                price_err = _validate_oca_prices(plan)
+                if price_err:
+                    intents.append(OrderIntent(
+                        plan_id=plan.plan_id,
+                        ticker=plan.ticker,
+                        action="SKIP",
+                        reason=price_err,
+                        entry_limit_price=None,
+                        quantity=oca_qty,
+                        tp_limit_price=plan.tp_limit_price,
+                        sl_stop_price=plan.sl_stop_price,
+                        sl_limit_price=plan.sl_limit_price,
+                    ))
+                else:
+                    intents.append(OrderIntent(
+                        plan_id=plan.plan_id,
+                        ticker=plan.ticker,
+                        action="OCA",
+                        reason="Position held, no existing SELL orders",
+                        entry_limit_price=None,
+                        quantity=oca_qty,
+                        tp_limit_price=plan.tp_limit_price,
+                        sl_stop_price=plan.sl_stop_price,
+                        sl_limit_price=plan.sl_limit_price,
+                    ))
         else:
             intents.append(OrderIntent(
                 plan_id=plan.plan_id,

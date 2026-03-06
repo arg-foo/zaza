@@ -157,6 +157,66 @@ class TestComputeOrderIntents:
         intents = compute_order_intents([], positions=[], open_orders=[])
         assert intents == []
 
+    def test_zero_entry_price_bracket_yields_skip(self) -> None:
+        """BRACKET with zero entry_limit_price -> SKIP."""
+        plan = _make_plan(entry_status="PENDING", entry_limit_price=0.0)
+        intents = compute_order_intents([plan], positions=[], open_orders=[])
+
+        assert len(intents) == 1
+        assert intents[0].action == "SKIP"
+        assert "Zero or negative price" in intents[0].reason
+        assert "entry_limit_price" in intents[0].reason
+
+    def test_zero_sl_price_oca_yields_skip(self) -> None:
+        """OCA with zero sl_stop_price -> SKIP."""
+        plan = _make_plan(entry_status="COMPLETED", sl_stop_price=0.0)
+        position = {"symbol": "AAPL", "quantity": 50}
+        intents = compute_order_intents([plan], positions=[position], open_orders=[])
+
+        assert len(intents) == 1
+        assert intents[0].action == "SKIP"
+        assert "Zero or negative price" in intents[0].reason
+        assert "sl_stop_price" in intents[0].reason
+
+    def test_negative_price_bracket_yields_skip(self) -> None:
+        """BRACKET with negative tp_limit_price -> SKIP."""
+        plan = _make_plan(entry_status="PENDING", tp_limit_price=-10.0)
+        intents = compute_order_intents([plan], positions=[], open_orders=[])
+
+        assert len(intents) == 1
+        assert intents[0].action == "SKIP"
+        assert "Zero or negative price" in intents[0].reason
+
+    def test_pending_with_position_yields_oca(self) -> None:
+        """PENDING entry but position already held -> OCA (entry likely filled)."""
+        plan = _make_plan(entry_status="PENDING")
+        position = {"symbol": "AAPL", "quantity": 50}
+        intents = compute_order_intents([plan], positions=[position], open_orders=[])
+
+        assert len(intents) == 1
+        assert intents[0].action == "OCA"
+        assert "position already held" in intents[0].reason.lower()
+
+    def test_pending_with_position_uses_min_qty(self) -> None:
+        """PENDING+position OCA uses min(plan.quantity, held_qty)."""
+        plan = _make_plan(entry_status="PENDING", quantity=50)
+        position = {"symbol": "AAPL", "quantity": 30}
+        intents = compute_order_intents([plan], positions=[position], open_orders=[])
+
+        assert len(intents) == 1
+        assert intents[0].action == "OCA"
+        assert intents[0].quantity == 30
+
+    def test_pending_with_position_and_sell_orders_yields_skip(self) -> None:
+        """PENDING+position with existing SELL orders -> SKIP."""
+        plan = _make_plan(entry_status="PENDING")
+        position = {"symbol": "AAPL", "quantity": 50}
+        sell_order = {"order_id": "88888", "symbol": "AAPL", "action": "SELL", "quantity": 50}
+        intents = compute_order_intents([plan], positions=[position], open_orders=[sell_order])
+
+        assert len(intents) == 1
+        assert intents[0].action == "SKIP"
+
     def test_different_ticker_orders_dont_match(self) -> None:
         """Orders for different tickers should not cause SKIP."""
         plan = _make_plan(entry_status="PENDING", ticker="AAPL")

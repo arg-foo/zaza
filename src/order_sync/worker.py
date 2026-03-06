@@ -55,7 +55,7 @@ def _setup_logging() -> structlog.stdlib.BoundLogger:
     return structlog.get_logger("order_sync")
 
 
-logger = _setup_logging()
+logger = structlog.get_logger("order_sync")
 
 
 # ---------------------------------------------------------------------------
@@ -138,49 +138,15 @@ async def _fetch_tiger_state(tiger_session: Any) -> tuple[list[dict], list[dict]
     return positions, open_orders
 
 
-async def _connect_and_call() -> tuple[list[TradePlan], list[dict], list[dict]]:
-    """Connect to both MCP servers and fetch all required data.
-
-    Returns:
-        Tuple of (plans, positions, open_orders).
-    """
+async def _fetch_plans() -> list[TradePlan]:
+    """Connect to Zaza MCP and fetch all active trade plans."""
     from mcp import ClientSession
     from mcp.client.streamable_http import streamable_http_client
 
-    async def _get_plans() -> list[TradePlan]:
-        async with streamable_http_client(config.ZAZA_MCP_URL) as (r, w, _):
-            async with ClientSession(r, w) as session:
-                await session.initialize()
-                return await _fetch_plans_from_session(session)
-
-    async def _get_tiger() -> tuple[list[dict], list[dict]]:
-        async with streamable_http_client(config.TIGER_MCP_URL) as (r, w, _):
-            async with ClientSession(r, w) as session:
-                await session.initialize()
-                return await _fetch_tiger_state(session)
-
-    plans_result, tiger_result = await asyncio.gather(_get_plans(), _get_tiger())
-    positions, open_orders = tiger_result
-
-    return plans_result, positions, open_orders
-
-
-async def _place_orders(intents: list[OrderIntent]) -> list[OrderResult]:
-    """Connect to Tiger MCP and place orders for actionable intents.
-
-    Args:
-        intents: List of non-SKIP OrderIntent objects.
-
-    Returns:
-        List of OrderResult objects.
-    """
-    from mcp import ClientSession
-    from mcp.client.streamable_http import streamable_http_client
-
-    async with streamable_http_client(config.TIGER_MCP_URL) as (r, w, _):
+    async with streamable_http_client(config.ZAZA_MCP_URL) as (r, w, _):
         async with ClientSession(r, w) as session:
             await session.initialize()
-            return await place_orders(session, intents)
+            return await _fetch_plans_from_session(session)
 
 
 # ---------------------------------------------------------------------------
@@ -203,36 +169,50 @@ async def run(dry_run: bool = False) -> int:
     Returns:
         Exit code: 0=ok, 1=warnings (bracket failed), 2=critical (OCA failed).
     """
-    # 1+2. Fetch all data
-    plans, positions, open_orders = await _connect_and_call()
+    global logger
+    logger = _setup_logging()
+
+    from mcp import ClientSession
+    from mcp.client.streamable_http import streamable_http_client
+
+    # 1. Fetch trade plans from Zaza
+    plans = await _fetch_plans()
 
     if not plans:
         logger.info("no_active_plans")
         return 0
 
-    # 3. Compute intents
-    intents = compute_order_intents(plans, positions, open_orders)
+    # 2-4. Single Tiger session for both reads and writes
+    async with streamable_http_client(config.TIGER_MCP_URL) as (r, w, _):
+        async with ClientSession(r, w) as tiger_session:
+            await tiger_session.initialize()
 
-    for intent in intents:
-        logger.info(
-            "order_intent",
-            plan_id=intent.plan_id,
-            ticker=intent.ticker,
-            action=intent.action,
-            reason=intent.reason,
-        )
+            # 2. Fetch positions + open orders
+            positions, open_orders = await _fetch_tiger_state(tiger_session)
 
-    if dry_run:
-        logger.info("dry_run_complete", total_intents=len(intents))
-        return 0
+            # 3. Compute intents
+            intents = compute_order_intents(plans, positions, open_orders)
 
-    # 4. Place orders
-    actionable = [i for i in intents if i.action != "SKIP"]
-    if not actionable:
-        logger.info("no_orders_to_place")
-        return 0
+            for intent in intents:
+                logger.info(
+                    "order_intent",
+                    plan_id=intent.plan_id,
+                    ticker=intent.ticker,
+                    action=intent.action,
+                    reason=intent.reason,
+                )
 
-    results = await _place_orders(actionable)
+            if dry_run:
+                logger.info("dry_run_complete", total_intents=len(intents))
+                return 0
+
+            # 4. Place orders
+            actionable = [i for i in intents if i.action != "SKIP"]
+            if not actionable:
+                logger.info("no_orders_to_place")
+                return 0
+
+            results = await place_orders(tiger_session, actionable)
 
     # 5. Determine exit code
     placed = sum(1 for r in results if r.success)

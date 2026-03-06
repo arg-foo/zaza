@@ -149,6 +149,21 @@ class TestPlaceSingleOrder:
         assert "Connection lost" in (result.error or "")
 
     @pytest.mark.asyncio
+    async def test_no_order_id_returns_failure(self) -> None:
+        """Response without order ID is treated as failure."""
+        session = AsyncMock()
+        session.call_tool.return_value = _make_mcp_response(
+            "Bracket order placed successfully."
+        )
+
+        intent = _make_intent(action="BRACKET")
+        result = await _place_single_order(session, intent)
+
+        assert result.success is False
+        assert result.order_id is None
+        assert "no order ID returned" in (result.error or "")
+
+    @pytest.mark.asyncio
     async def test_unknown_action_returns_failure(self) -> None:
         session = AsyncMock()
         intent = _make_intent(action="UNKNOWN")

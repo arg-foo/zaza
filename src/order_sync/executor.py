@@ -115,6 +115,15 @@ async def _place_single_order(
             )
 
         order_id = _extract_order_id(text)
+        if order_id is None:
+            return OrderResult(
+                plan_id=intent.plan_id,
+                ticker=intent.ticker,
+                action=intent.action,
+                success=False,
+                order_id=None,
+                error="Order placed but no order ID returned",
+            )
         return OrderResult(
             plan_id=intent.plan_id,
             ticker=intent.ticker,
