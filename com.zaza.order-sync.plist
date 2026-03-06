@@ -17,55 +17,101 @@
     <key>WorkingDirectory</key>
     <string>/Users/zifcrypto/Desktop/zaza</string>
 
-    <!-- Run at 9:25 AM ET weekdays only -->
-    <!-- EST = UTC-5 → 14:25 UTC; EDT = UTC-4 → 13:25 UTC -->
-    <!-- Using 13:25 UTC (EDT) as default; adjust for EST if needed -->
+    <!-- DST-aware dual schedule for 9:31 AM ET weekdays -->
+    <!-- EDT (Mar-Nov): 13:31 UTC = 9:31 AM ET (runs), 14:31 UTC = 10:31 AM ET (exits) -->
+    <!-- EST (Nov-Mar): 13:31 UTC = 8:31 AM ET (exits), 14:31 UTC = 9:31 AM ET (runs) -->
+    <!-- Python time-gate in __main__.py exits early if not within 9:26-9:36 AM ET -->
     <key>StartCalendarInterval</key>
     <array>
-        <!-- Monday -->
+        <!-- Monday 13:31 UTC -->
         <dict>
             <key>Weekday</key>
             <integer>1</integer>
             <key>Hour</key>
             <integer>13</integer>
             <key>Minute</key>
-            <integer>25</integer>
+            <integer>31</integer>
         </dict>
-        <!-- Tuesday -->
+        <!-- Monday 14:31 UTC -->
+        <dict>
+            <key>Weekday</key>
+            <integer>1</integer>
+            <key>Hour</key>
+            <integer>14</integer>
+            <key>Minute</key>
+            <integer>31</integer>
+        </dict>
+        <!-- Tuesday 13:31 UTC -->
         <dict>
             <key>Weekday</key>
             <integer>2</integer>
             <key>Hour</key>
             <integer>13</integer>
             <key>Minute</key>
-            <integer>25</integer>
+            <integer>31</integer>
         </dict>
-        <!-- Wednesday -->
+        <!-- Tuesday 14:31 UTC -->
+        <dict>
+            <key>Weekday</key>
+            <integer>2</integer>
+            <key>Hour</key>
+            <integer>14</integer>
+            <key>Minute</key>
+            <integer>31</integer>
+        </dict>
+        <!-- Wednesday 13:31 UTC -->
         <dict>
             <key>Weekday</key>
             <integer>3</integer>
             <key>Hour</key>
             <integer>13</integer>
             <key>Minute</key>
-            <integer>25</integer>
+            <integer>31</integer>
         </dict>
-        <!-- Thursday -->
+        <!-- Wednesday 14:31 UTC -->
+        <dict>
+            <key>Weekday</key>
+            <integer>3</integer>
+            <key>Hour</key>
+            <integer>14</integer>
+            <key>Minute</key>
+            <integer>31</integer>
+        </dict>
+        <!-- Thursday 13:31 UTC -->
         <dict>
             <key>Weekday</key>
             <integer>4</integer>
             <key>Hour</key>
             <integer>13</integer>
             <key>Minute</key>
-            <integer>25</integer>
+            <integer>31</integer>
         </dict>
-        <!-- Friday -->
+        <!-- Thursday 14:31 UTC -->
+        <dict>
+            <key>Weekday</key>
+            <integer>4</integer>
+            <key>Hour</key>
+            <integer>14</integer>
+            <key>Minute</key>
+            <integer>31</integer>
+        </dict>
+        <!-- Friday 13:31 UTC -->
         <dict>
             <key>Weekday</key>
             <integer>5</integer>
             <key>Hour</key>
             <integer>13</integer>
             <key>Minute</key>
-            <integer>25</integer>
+            <integer>31</integer>
+        </dict>
+        <!-- Friday 14:31 UTC -->
+        <dict>
+            <key>Weekday</key>
+            <integer>5</integer>
+            <key>Hour</key>
+            <integer>14</integer>
+            <key>Minute</key>
+            <integer>31</integer>
         </dict>
     </array>
 
