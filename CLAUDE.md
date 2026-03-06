@@ -33,11 +33,6 @@ Zaza is a financial research MCP server (66 tools, 11 domains) that extends Clau
     ├── tools/ (finance/15, ta/9, options/7, sentiment/4, macro/5, quantitative/6, institutional/4, earnings/4, backtesting/4, screener/3, browser/5)
     └── utils/ (indicators.py, models.py, sentiment.py, predictions.py)
 
-    consumer/                  (standalone package: zaza-consumer)
-    ├── src/zaza_consumer/     (trade execution consumer — 4 deps, own Dockerfile)
-    ├── tests/
-    ├── pyproject.toml
-    └── Dockerfile
   </structure>
 
   <data-sources>

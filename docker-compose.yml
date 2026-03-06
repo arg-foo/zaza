@@ -1,20 +1,15 @@
 # Zaza Platform — Docker Compose
 #
 # Services:
-#   zaza     — Zaza MCP server (financial research tools)
-#   consumer — Trade execution consumer (order lifecycle automation)
-#
-# Redis and Tiger MCP are managed externally (tiger-brokers-cash-mcp/).
-# The consumer connects to them via REDIS_URL and TIGER_MCP_URL env vars.
+#   zaza — Zaza MCP server (financial research tools)
 #
 # Usage:
-#   docker compose up -d              # Start all services
-#   docker compose ps                 # Check status
-#   docker compose down               # Stop all services
-#   docker compose logs consumer -f   # Follow consumer logs
+#   docker compose up -d          # Start all services
+#   docker compose ps             # Check status
+#   docker compose down           # Stop all services
 
 services:
-  # ---- Zaza MCP Server (streamable-http for consumer access) ----
+  # ---- Zaza MCP Server ----
   zaza:
     build:
       context: .
@@ -33,23 +28,6 @@ services:
       timeout: 3s
       retries: 5
       start_period: 10s
-    networks:
-      - default
-      - tiger
-
-  # ---- Trade Execution Consumer ----
-  consumer:
-    build:
-      context: ./consumer
-    depends_on:
-      zaza:
-        condition: service_healthy
-    env_file: .env
-    environment:
-      - ZAZA_MCP_URL=http://zaza:8100/mcp
-      - TIGER_MCP_URL=http://tiger-mcp:8000/mcp
-      - REDIS_URL=redis://redis:6379/0
-    restart: unless-stopped
     networks:
       - default
       - tiger

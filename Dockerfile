@@ -7,8 +7,6 @@
 #   3. runtime   — Final production image (MCP server)
 #   4. dev       — Development image with test dependencies
 #
-# The consumer service has its own Dockerfile at consumer/.
-#
 # Pattern follows official Astral uv Docker guide:
 # https://docs.astral.sh/uv/guides/integration/docker/
 # ============================================================
