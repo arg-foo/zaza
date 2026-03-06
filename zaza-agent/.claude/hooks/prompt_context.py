@@ -10,16 +10,22 @@ to inject into the conversation context.
 from __future__ import annotations
 
 import asyncio
-import copy
 import json
 import os
-import re
 import sys
 from datetime import datetime, timezone
 from xml.etree import ElementTree as ET
 
 from mcp import ClientSession
 from mcp.client.streamable_http import streamable_http_client
+from order_sync.parsers import (
+    TradePlan,
+    _extract_text,
+    _parse_dollar_value,
+    parse_open_orders,
+    parse_positions,
+    parse_trade_plan,
+)
 
 # --- MCP Server Parameters ---
 ZAZA_MCP_URL = os.environ.get("ZAZA_MCP_URL", "http://localhost:8100/mcp")
@@ -27,7 +33,7 @@ TIGER_MCP_URL = os.environ.get("TIGER_MCP_URL", "http://localhost:8000/mcp")
 
 
 # =====================================================================
-# Pure parsing functions (no MCP dependency, fully testable)
+# Local parsers (account summary is Tiger-specific, not shared)
 # =====================================================================
 
 
@@ -65,271 +71,43 @@ def parse_account_summary(text: str) -> dict:
     return result
 
 
-def _parse_dollar_value(value_str: str) -> float:
-    """Parse a dollar string like '$12,450.00' or '-$125.30' into a float."""
-    negative = value_str.startswith("-")
-    # Remove $, commas, and leading minus/whitespace
-    cleaned = value_str.replace("$", "").replace(",", "").replace("-", "").strip()
-    try:
-        amount = float(cleaned)
-    except (ValueError, TypeError):
-        return 0.0
-    return -amount if negative else amount
-
-
-def parse_positions(text: str) -> list[dict]:
-    """Parse Tiger's formatted positions text into a list of dicts.
-
-    Handles multiple positions separated by blank lines, single positions,
-    and the 'No positions found.' empty case.
+def cross_reference(plans: list[TradePlan], open_orders: list[dict]) -> list[dict]:
+    """Annotate each TradePlan with live order status from broker.
 
     Args:
-        text: Raw text output from Tiger's get_positions tool.
-
-    Returns:
-        List of dicts, each with keys: symbol, quantity, avg_cost,
-        market_value, unrealized_pnl, pnl_pct.
-    """
-    if "No positions found" in text:
-        return []
-
-    positions: list[dict] = []
-    current_symbol: str | None = None
-    current_data: dict = {}
-
-    for line in text.splitlines():
-        stripped = line.strip()
-
-        # Skip header lines
-        if not stripped or stripped.startswith("Current Positions") or stripped.startswith("==="):
-            if current_symbol and current_data:
-                current_data["symbol"] = current_symbol
-                positions.append(current_data)
-                current_data = {}
-                current_symbol = None
-            continue
-
-        # Check if this line is a ticker symbol (all caps, no colon)
-        if ":" not in stripped and re.match(r"^[A-Z]{1,5}([./][A-Z]{1,2})?$", stripped):
-            # Save previous position if exists
-            if current_symbol and current_data:
-                current_data["symbol"] = current_symbol
-                positions.append(current_data)
-                current_data = {}
-            current_symbol = stripped
-            continue
-
-        # Parse data lines with colon
-        if ":" in stripped and current_symbol:
-            label, value = stripped.split(":", 1)
-            label = label.strip()
-            value = value.strip()
-
-            if label == "Quantity":
-                current_data["quantity"] = int(float(value))
-            elif label == "Avg Cost":
-                current_data["avg_cost"] = _parse_dollar_value(value)
-            elif label == "Market Value":
-                current_data["market_value"] = _parse_dollar_value(value)
-            elif label == "Unrealized P&L":
-                # Format: $125.00 (1.36%) or -$90.00 (-3.40%)
-                pnl_match = re.match(
-                    r"(-?\$[\d,]+\.?\d*)\s*\((-?[\d.]+)%\)",
-                    value,
-                )
-                if pnl_match:
-                    current_data["unrealized_pnl"] = _parse_dollar_value(
-                        pnl_match.group(1)
-                    )
-                    current_data["pnl_pct"] = float(pnl_match.group(2))
-
-    # Don't forget the last position
-    if current_symbol and current_data:
-        current_data["symbol"] = current_symbol
-        positions.append(current_data)
-
-    return positions
-
-
-def parse_open_orders(text: str) -> list[dict]:
-    """Parse Tiger's formatted open orders text into a list of dicts.
-
-    Each order line has the format:
-    Order {id}: {sym} {action} {qty} (filled {n}) | type={t} limit={p} status={s} submitted={ts}
-
-    Args:
-        text: Raw text output from Tiger's get_open_orders tool.
-
-    Returns:
-        List of dicts, each with keys: order_id, symbol, action, quantity,
-        filled, order_type, limit_price, status.
-    """
-    if "No open orders" in text:
-        return []
-
-    orders: list[dict] = []
-    pattern = re.compile(
-        r"Order\s+(\S+):\s+(\S+)\s+(\S+)\s+(\d+)\s+\(filled\s+(\d+)\)"
-        r"\s*\|\s*type=(\S+)\s+limit=(\S+)\s+status=(\S+)"
-    )
-
-    for line in text.splitlines():
-        line = line.strip()
-        match = pattern.match(line)
-        if match:
-            orders.append({
-                "order_id": match.group(1),
-                "symbol": match.group(2),
-                "action": match.group(3),
-                "quantity": int(match.group(4)),
-                "filled": int(match.group(5)),
-                "order_type": match.group(6),
-                "limit_price": match.group(7),
-                "status": match.group(8),
-            })
-
-    return orders
-
-
-def parse_trade_plan_xml(xml_string: str) -> dict | None:
-    """Parse trade plan XML into a structured dict.
-
-    Extracts ticker, side, quantity, optional conviction/ev/rr,
-    entry details, stop-loss details, and take-profit details.
-
-    Args:
-        xml_string: The trade plan XML string.
-
-    Returns:
-        Parsed dict, or None if XML is malformed or missing required elements.
-    """
-    if not xml_string or not xml_string.strip():
-        return None
-
-    try:
-        root = ET.fromstring(xml_string)
-    except ET.ParseError:
-        return None
-
-    if root.tag != "trade-plan":
-        return None
-
-    # Summary (required)
-    summary = root.find("summary")
-    if summary is None:
-        return None
-
-    side_elem = summary.find("side")
-    ticker_elem = summary.find("ticker")
-    quantity_elem = summary.find("quantity")
-
-    if side_elem is None or ticker_elem is None or quantity_elem is None:
-        return None
-
-    # Optional fields at root level
-    conviction_elem = root.find("conviction")
-    ev_elem = root.find("expected-value")
-    rr_elem = root.find("risk-reward")
-
-    # Entry (required)
-    entry = root.find("entry")
-    if entry is None:
-        return None
-
-    entry_strategy = entry.findtext("strategy")
-    entry_trigger = entry.findtext("trigger")
-    entry_lo = entry.find("limit-order")
-
-    if entry_lo is None or entry_strategy is None or entry_trigger is None:
-        return None
-
-    entry_order_id = entry_lo.findtext("order_id")
-    if not entry_order_id:  # None or empty string
-        return None
-
-    # Exit (required)
-    exit_elem = root.find("exit")
-    if exit_elem is None:
-        return None
-
-    # Stop-loss
-    stop_loss = exit_elem.find("stop-loss")
-    if stop_loss is None:
-        return None
-    sl_trigger = stop_loss.findtext("trigger")
-    sl_lo = stop_loss.find("limit-order")
-    if sl_lo is None:
-        return None
-    sl_order_id = sl_lo.findtext("order_id")
-
-    # Take-profit
-    take_profit = exit_elem.find("take-profit")
-    if take_profit is None:
-        return None
-    tp_trigger = take_profit.findtext("trigger")
-    tp_lo = take_profit.find("limit-order")
-    if tp_lo is None:
-        return None
-    tp_order_id = tp_lo.findtext("order_id")
-
-    return {
-        "ticker": root.get("ticker", ""),
-        "side": side_elem.text or "",
-        "quantity": quantity_elem.text or "",
-        "conviction": conviction_elem.text if conviction_elem is not None else None,
-        "ev": ev_elem.text if ev_elem is not None else None,
-        "rr": rr_elem.text if rr_elem is not None else None,
-        "entry": {
-            "strategy": entry_strategy,
-            "trigger": entry_trigger,
-            "order_id": entry_order_id,
-        },
-        "stop_loss": {
-            "trigger": sl_trigger or "",
-            "order_id": sl_order_id or "",
-        },
-        "take_profit": {
-            "trigger": tp_trigger or "",
-            "order_id": tp_order_id or "",
-        },
-    }
-
-
-def cross_reference(plans: list[dict], open_orders: list[dict]) -> list[dict]:
-    """Annotate each plan's order_ids with live order status.
-
-    Builds a lookup from order_id -> order dict, then for each plan's
-    entry/stop_loss/take_profit, adds an 'order_status' field.
-
-    Args:
-        plans: List of parsed trade plan dicts.
+        plans: List of parsed TradePlan dataclasses.
         open_orders: List of parsed open order dicts.
 
     Returns:
-        The same plans list with order_status annotations added.
+        List of dicts with plan fields + order_status annotation.
     """
     if not plans:
         return []
 
-    # Build order lookup
-    order_lookup: dict[str, dict] = {}
-    for order in open_orders:
-        order_lookup[order["order_id"]] = order
+    order_lookup = {o["order_id"]: o for o in open_orders}
 
     result: list[dict] = []
     for plan in plans:
-        # Deep copy to avoid mutating originals
-        annotated = copy.deepcopy(plan)
-
-        for section_key in ("entry", "stop_loss", "take_profit"):
-            section = annotated.get(section_key, {})
-            order_id = section.get("order_id", "")
-            if order_id in order_lookup:
-                section["order_status"] = order_lookup[order_id]["status"]
-            else:
-                section["order_status"] = "UNKNOWN"
-
-        result.append(annotated)
+        plan_dict = {
+            "plan_id": plan.plan_id,
+            "ticker": plan.ticker,
+            "side": plan.side,
+            "quantity": str(plan.quantity),
+            "conviction": plan.conviction or None,
+            "ev": plan.expected_value or None,
+            "rr": plan.risk_reward_ratio or None,
+            "entry_strategy": plan.entry_strategy,
+            "entry_status": plan.entry_status,
+            "order_id": plan.order_id,
+            "entry_limit_price": plan.entry_limit_price,
+            "sl_stop_price": plan.sl_stop_price,
+            "sl_limit_price": plan.sl_limit_price,
+            "tp_limit_price": plan.tp_limit_price,
+            "order_status": order_lookup[plan.order_id]["status"]
+            if plan.order_id in order_lookup
+            else "UNKNOWN",
+        }
+        result.append(plan_dict)
 
     return result
 
@@ -435,35 +213,39 @@ def format_output(
 
         plan_elem = ET.SubElement(plans_elem, "trade-plan", **plan_attrs)
 
-        # Entry sub-element
-        entry = plan.get("entry", {})
-        ET.SubElement(
-            plan_elem,
-            "entry",
-            strategy=entry.get("strategy", ""),
-            order_id=entry.get("order_id", ""),
-            order_status=entry.get("order_status", "UNKNOWN"),
-        )
+        # Order sub-element (mirrors <order>-wrapped schema)
+        order_attrs: dict[str, str] = {
+            "order_id": plan.get("order_id", ""),
+            "order_status": plan.get("order_status", "UNKNOWN"),
+            "entry_status": plan.get("entry_status", ""),
+        }
+        order_elem = ET.SubElement(plan_elem, "order", **order_attrs)
 
-        # Stop-loss sub-element
-        sl = plan.get("stop_loss", {})
-        ET.SubElement(
-            plan_elem,
-            "stop-loss",
-            trigger=sl.get("trigger", ""),
-            order_id=sl.get("order_id", ""),
-            order_status=sl.get("order_status", "UNKNOWN"),
-        )
+        # Entry
+        entry_attrs: dict[str, str] = {
+            "strategy": plan.get("entry_strategy", ""),
+        }
+        entry_limit = plan.get("entry_limit_price")
+        if entry_limit:
+            entry_attrs["limit_price"] = f"{entry_limit:.2f}"
+        ET.SubElement(order_elem, "entry", **entry_attrs)
 
-        # Take-profit sub-element
-        tp = plan.get("take_profit", {})
-        ET.SubElement(
-            plan_elem,
-            "take-profit",
-            trigger=tp.get("trigger", ""),
-            order_id=tp.get("order_id", ""),
-            order_status=tp.get("order_status", "UNKNOWN"),
-        )
+        # Stop-loss
+        sl_attrs: dict[str, str] = {}
+        sl_stop = plan.get("sl_stop_price")
+        sl_limit = plan.get("sl_limit_price")
+        if sl_stop:
+            sl_attrs["stop_price"] = f"{sl_stop:.2f}"
+        if sl_limit:
+            sl_attrs["limit_price"] = f"{sl_limit:.2f}"
+        ET.SubElement(order_elem, "stop-loss", **sl_attrs)
+
+        # Take-profit
+        tp_attrs: dict[str, str] = {}
+        tp_limit = plan.get("tp_limit_price")
+        if tp_limit:
+            tp_attrs["limit_price"] = f"{tp_limit:.2f}"
+        ET.SubElement(order_elem, "take-profit", **tp_attrs)
 
     # Serialize to string
     return ET.tostring(root, encoding="unicode", xml_declaration=False)
@@ -474,16 +256,6 @@ def _add_text_child(parent: ET.Element, tag: str, text: str) -> ET.Element:
     child = ET.SubElement(parent, tag)
     child.text = text
     return child
-
-
-def _extract_text(response) -> str:
-    """Safely extract text from MCP response, handling non-text content."""
-    if not response.content:
-        return ""
-    content = response.content[0]
-    if hasattr(content, "text"):
-        return content.text
-    return ""
 
 
 def _format_signed(value: float) -> str:
@@ -537,7 +309,7 @@ async def fetch_tiger_data(session: ClientSession) -> dict:
 
 async def _fetch_single_plan(
     session: ClientSession, plan_id: str
-) -> dict | None:
+) -> TradePlan | None:
     """Fetch and parse a single trade plan by ID.
 
     Args:
@@ -545,7 +317,7 @@ async def _fetch_single_plan(
         plan_id: The trade plan ID to fetch.
 
     Returns:
-        Parsed trade plan dict with plan_id, or None on failure.
+        Parsed TradePlan with plan_id set, or None on failure.
     """
     try:
         detail_resp = await session.call_tool(
@@ -558,9 +330,9 @@ async def _fetch_single_plan(
             return None
 
         xml_string = detail_data.get("xml", "")
-        parsed = parse_trade_plan_xml(xml_string)
+        parsed = parse_trade_plan(xml_string)
         if parsed is not None:
-            parsed["plan_id"] = plan_id
+            parsed.plan_id = plan_id
             return parsed
         else:
             print(
@@ -576,7 +348,7 @@ async def _fetch_single_plan(
         return None
 
 
-async def fetch_zaza_data(session: ClientSession) -> list[dict]:
+async def fetch_zaza_data(session: ClientSession) -> list[TradePlan]:
     """Call Zaza MCP tools to get active trade plans.
 
     First calls list_trade_plans to get plan IDs, then calls get_trade_plan
@@ -586,7 +358,7 @@ async def fetch_zaza_data(session: ClientSession) -> list[dict]:
         session: An initialized MCP ClientSession connected to Zaza MCP.
 
     Returns:
-        List of parsed trade plan dicts (with plan_id added).
+        List of parsed TradePlan dataclasses (with plan_id set).
     """
     list_resp = await session.call_tool(
         "list_trade_plans", {"include_archived": False}
@@ -633,7 +405,7 @@ async def fetch_all() -> dict:
                 await session.initialize()
                 return await fetch_tiger_data(session)
 
-    async def _get_zaza() -> list[dict]:
+    async def _get_zaza() -> list[TradePlan]:
         async with streamable_http_client(ZAZA_MCP_URL) as (r, w, _):
             async with ClientSession(r, w) as session:
                 await session.initialize()

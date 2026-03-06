@@ -20,7 +20,6 @@ logger = structlog.get_logger(__name__)
 
 # Required child elements for a <limit-order>
 _LIMIT_ORDER_FIELDS = (
-    "order_id",
     "type",
     "side",
     "ticker",
@@ -48,7 +47,8 @@ def _safe_parse_xml(xml_string: str) -> ET.Element:
     Raises:
         ET.ParseError: If the XML contains DTD/entity declarations or is malformed.
     """
-    if "<!DOCTYPE" in xml_string or "<!ENTITY" in xml_string:
+    upper = xml_string.upper()
+    if "<!DOCTYPE" in upper or "<!ENTITY" in upper:
         raise ET.ParseError("DTD and entity declarations are not allowed")
     return ET.fromstring(xml_string)
 
@@ -90,10 +90,12 @@ class TradeXmlStore:
         Required structure checks:
         - Root is <trade-plan> with ticker and generated attrs
         - Has <summary> with <side>, <ticker>, <quantity>
-        - Has <entry> with <strategy>, <trigger>, <limit-order>
-        - <limit-order> has <order_id>, <type>, <side>, <ticker>,
+        - Has <order> with <order_id>, <entry>, <exit>
+        - <entry> has <status>, <strategy>, <trigger>, <limit-order>
+        - <limit-order> has <type>, <side>, <ticker>,
           <quantity>, <limit_price>, <time_in_force>
-        - Has <exit> with <stop-loss> and <take-profit>,
+        - STOP_LIMIT limit-orders must also have <stop_price>
+        - <exit> has <stop-loss> and <take-profit>,
           each containing <limit-order>
         """
         errors: list[str] = []
@@ -122,11 +124,31 @@ class TradeXmlStore:
                 if summary.find(child_tag) is None:
                     errors.append(f"Missing <{child_tag}> in <summary>")
 
-        # <entry>
-        entry = root.find("entry")
+        # <order>
+        order = root.find("order")
+        if order is None:
+            errors.append("Missing required element <order>")
+            return errors
+
+        # <order_id> inside <order>
+        order_id_elem = order.find("order_id")
+        if order_id_elem is None:
+            errors.append("Missing <order_id> in <order>")
+        elif not order_id_elem.text or not order_id_elem.text.strip():
+            errors.append("Empty <order_id> in <order>")
+
+        # <entry> inside <order>
+        entry = order.find("entry")
         if entry is None:
             errors.append("Missing required element <entry>")
         else:
+            # <status> is required in <entry>
+            status_elem = entry.find("status")
+            if status_elem is None:
+                errors.append("Missing <status> in <entry>")
+            elif not status_elem.text or not status_elem.text.strip():
+                errors.append("Empty <status> in <entry>")
+
             for child_tag in ("strategy", "trigger"):
                 if entry.find(child_tag) is None:
                     errors.append(f"Missing <{child_tag}> in <entry>")
@@ -136,8 +158,8 @@ class TradeXmlStore:
             else:
                 self._validate_limit_order(entry_lo, "entry", errors)
 
-        # <exit>
-        exit_elem = root.find("exit")
+        # <exit> inside <order>
+        exit_elem = order.find("exit")
         if exit_elem is None:
             errors.append("Missing required element <exit>")
         else:
@@ -163,6 +185,7 @@ class TradeXmlStore:
         """Validate that a <limit-order> element has all required fields.
 
         Checks both presence and non-empty text content of critical fields (CR-07).
+        Additionally, STOP_LIMIT orders must have a <stop_price> element.
         """
         for field in _LIMIT_ORDER_FIELDS:
             elem = lo.find(field)
@@ -172,6 +195,15 @@ class TradeXmlStore:
                 errors.append(
                     f"Empty <{field}> in <limit-order> ({context})"
                 )
+
+        # Conditional: STOP_LIMIT orders require <stop_price>
+        type_elem = lo.find("type")
+        if type_elem is not None and type_elem.text and type_elem.text.strip() == "STOP_LIMIT":
+            stop_price = lo.find("stop_price")
+            if stop_price is None:
+                errors.append(f"Missing <stop_price> in STOP_LIMIT <limit-order> ({context})")
+            elif not stop_price.text or not stop_price.text.strip():
+                errors.append(f"Empty <stop_price> in STOP_LIMIT <limit-order> ({context})")
 
     # ------------------------------------------------------------------
     # Save
