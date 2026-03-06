@@ -171,6 +171,10 @@ class TestParseTradePlan:
         assert plan.sl_stop_price == 180.00
         assert plan.sl_limit_price == 179.50
         assert plan.tp_limit_price == 194.50
+        assert plan.conviction == "HIGH"
+        assert plan.expected_value == "+3.8%"
+        assert plan.risk_reward_ratio == "1:2.5"
+        assert plan.entry_strategy == "support_bounce"
 
     def test_valid_completed_plan(self) -> None:
         """Parse a valid COMPLETED trade plan XML."""
@@ -185,6 +189,10 @@ class TestParseTradePlan:
         assert plan.sl_stop_price == 410.00
         assert plan.sl_limit_price == 409.50
         assert plan.tp_limit_price == 440.00
+        assert plan.conviction == "MEDIUM"
+        assert plan.expected_value == "+2.1%"
+        assert plan.risk_reward_ratio == "1:2.0"
+        assert plan.entry_strategy == "breakout_buy"
 
     def test_missing_summary_returns_none(self) -> None:
         """XML without <summary> element returns None."""
@@ -251,6 +259,45 @@ class TestParseTradePlan:
             "<quantity>abc</quantity>",
         )
         assert parse_trade_plan(xml) is None
+
+    def test_missing_optional_metadata_defaults_to_empty(self) -> None:
+        """XML without conviction/ev/rr/strategy still parses; metadata defaults to ""."""
+        xml = """\
+<trade-plan ticker="X" generated="2026-01-01">
+  <summary>
+    <side>BUY</side>
+    <ticker>X</ticker>
+    <quantity>10</quantity>
+  </summary>
+  <order>
+    <order_id>BUY-X-001</order_id>
+    <entry>
+      <status>PENDING</status>
+      <limit-order>
+        <limit_price>100.00</limit_price>
+      </limit-order>
+    </entry>
+    <exit>
+      <stop-loss>
+        <limit-order>
+          <stop_price>95.00</stop_price>
+          <limit_price>94.50</limit_price>
+        </limit-order>
+      </stop-loss>
+      <take-profit>
+        <limit-order>
+          <limit_price>110.00</limit_price>
+        </limit-order>
+      </take-profit>
+    </exit>
+  </order>
+</trade-plan>"""
+        plan = parse_trade_plan(xml)
+        assert plan is not None
+        assert plan.conviction == ""
+        assert plan.expected_value == ""
+        assert plan.risk_reward_ratio == ""
+        assert plan.entry_strategy == ""
 
     def test_plan_id_not_set_by_parser(self) -> None:
         """plan_id should be empty string by default (set externally)."""

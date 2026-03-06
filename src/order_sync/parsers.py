@@ -34,6 +34,11 @@ class TradePlan:
     sl_stop_price: float = 0.0
     sl_limit_price: float = 0.0
     tp_limit_price: float = 0.0
+    # Metadata (used by prompt_context, ignored by order_sync planner/executor)
+    conviction: str = ""
+    expected_value: str = ""
+    risk_reward_ratio: str = ""
+    entry_strategy: str = ""
 
 
 # ---------------------------------------------------------------------------
@@ -136,6 +141,10 @@ def parse_trade_plan(xml_string: str | None) -> TradePlan | None:
         sl_stop_price=_safe_float(sl_stop_elem),
         sl_limit_price=_safe_float(sl_limit_elem),
         tp_limit_price=_safe_float(tp_limit_elem),
+        conviction=(summary.findtext("conviction") or "").strip(),
+        expected_value=(summary.findtext("expected_value") or "").strip(),
+        risk_reward_ratio=(summary.findtext("risk_reward_ratio") or "").strip(),
+        entry_strategy=(entry.findtext("strategy") or "").strip(),
     )
 
 
