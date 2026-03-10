@@ -166,27 +166,31 @@
 
   <step id="1" name="Assess Portfolio &amp; Active Plans">
 
-    Part A — Position Health:
-    For EACH position:
-      1. get_price_snapshot(ticker) - current price, daily change, volume
-      2. get_momentum_indicators(ticker) - RSI, MACD, Stochastic
-      3. Classify:
-         HOLD: RSI 40-70, MACD bullish/neutral, above support
-         TRIM: RSI &gt; 75, weight &gt; 25%, or weakening momentum at resistance
-         EXIT: RSI &gt; 80 or &lt; 25 with bearish MACD crossover, broken support, stop breached
+    Part A — Load Active Plans (plans are the primary entity):
+      1. list_trade_plans(status="active") - fetch all active plans
+      2. get_trade_plan(id) per plan - parse XML for ticker, entry/stop/target, thesis, entry status
+      3. get_positions() - fetch all held positions
+      4. Match each position to its corresponding trade plan by ticker
 
-    Part B — Active Plan Validation:
-    For EACH active trade plan (from list_trade_plans):
-      1. Identify the plan's ticker, entry/stop/target levels, and original thesis
-      2. Delegate to sub-agents in parallel per plan stock:
+    Part B — Per-Plan Analysis (parallel across plans):
+    For EACH active trade plan:
+      1. Identify the plan's ticker, entry/stop/target levels, original thesis, and entry status
+      2. Delegate to sub-agents in parallel:
          - ta agent: full TA to check if levels and directional bias still hold
          - sentiment agent: has sentiment shifted since plan creation?
          - options agent: has positioning changed (IV, flow, GEX)?
-      3. Compare fresh analysis against the plan's original thesis:
+      3. If position exists for this plan (entry COMPLETED):
+         a. get_price_snapshot(ticker) - current price, daily change, volume
+         b. get_momentum_indicators(ticker) - RSI, MACD, Stochastic
+         c. Classify position:
+            HOLD: RSI 40-70, MACD bullish/neutral, above support
+            TRIM: RSI &gt; 75, weight &gt; 25%, or weakening momentum at resistance
+            EXIT: RSI &gt; 80 or &lt; 25 with bearish MACD crossover, broken support, stop breached
+      4. Compare fresh analysis against the plan's original thesis:
          - Are entry levels still valid or has S/R shifted?
          - Is directional bias (bullish/bearish) still intact?
          - Has sentiment or options positioning flipped?
-      4. Classify each plan:
+      5. Classify each plan:
          KEEP: thesis intact, levels still valid
          MODIFY: directional bias intact but levels need adjustment (update entry/stop/target)
          CANCEL: thesis invalidated (trend reversed, key support broken, sentiment flipped)
@@ -194,8 +198,7 @@
     If no positions AND no active plans: rebalance = true (if cash &gt; 0), false (if cash = 0).
 
     Output: portfolio_summary {cash, invested, total},
-            position_assessments [{ticker, HOLD|TRIM|EXIT, rationale}],
-            plan_assessments [{plan_id, ticker, KEEP|MODIFY|CANCEL, rationale, updated_levels if MODIFY}],
+            plan_assessments [{plan_id, ticker, KEEP|MODIFY|CANCEL, position: HOLD|TRIM|EXIT|null, rationale, updated_levels if MODIFY}],
             rebalance_needed (bool)
   </step>
 
