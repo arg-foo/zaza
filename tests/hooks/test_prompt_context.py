@@ -143,6 +143,9 @@ def _make_trade_plan(
     sl_stop_price: float = 180.00,
     sl_limit_price: float = 179.50,
     tp_limit_price: float = 194.50,
+    position_status: str = "NONE",
+    position_quantity: int = 0,
+    position_avg_cost: float = 0.0,
     conviction: str = "HIGH",
     expected_value: str = "+3.8%",
     risk_reward_ratio: str = "1:2.5",
@@ -159,6 +162,9 @@ def _make_trade_plan(
         sl_stop_price=sl_stop_price,
         sl_limit_price=sl_limit_price,
         tp_limit_price=tp_limit_price,
+        position_status=position_status,
+        position_quantity=position_quantity,
+        position_avg_cost=position_avg_cost,
         conviction=conviction,
         expected_value=expected_value,
         risk_reward_ratio=risk_reward_ratio,
@@ -323,6 +329,26 @@ class TestCrossReference:
         assert result[0]["sl_limit_price"] == 179.50
         assert result[0]["tp_limit_price"] == 194.50
 
+    def test_preserves_position_data(self) -> None:
+        """cross_reference preserves position_status/quantity/avg_cost."""
+        plan = _make_trade_plan(
+            position_status="HELD", position_quantity=50, position_avg_cost=184.00
+        )
+        result = cross_reference([plan], [])
+
+        assert result[0]["position_status"] == "HELD"
+        assert result[0]["position_quantity"] == 50
+        assert result[0]["position_avg_cost"] == 184.00
+
+    def test_position_none_defaults(self) -> None:
+        """cross_reference preserves NONE position defaults."""
+        plan = _make_trade_plan()
+        result = cross_reference([plan], [])
+
+        assert result[0]["position_status"] == "NONE"
+        assert result[0]["position_quantity"] == 0
+        assert result[0]["position_avg_cost"] == 0.0
+
     def test_does_not_mutate_original(self) -> None:
         """cross_reference should not mutate the original TradePlan."""
         plan = _make_trade_plan()
@@ -472,6 +498,38 @@ class TestFormatOutput:
         tp = order.find("take-profit")
         assert tp is not None
         assert tp.get("limit_price") == "194.50"
+
+    def test_trade_plan_position_none(self) -> None:
+        """Trade plan with position NONE shows position_status attribute."""
+        plan = _make_trade_plan()
+        plans = cross_reference([plan], [])
+        output = format_output(
+            account=self._make_account(), positions=[], open_orders=[],
+            plans=plans, timestamp="2026-02-25T14:30:00Z",
+        )
+        root = ET.fromstring(output)
+        tp = root.find("active-trade-plans/trade-plan")
+        assert tp is not None
+        assert tp.get("position_status") == "NONE"
+        assert tp.get("position_qty") is None  # Not shown when NONE
+        assert tp.get("position_avg_cost") is None
+
+    def test_trade_plan_position_held(self) -> None:
+        """Trade plan with position HELD shows position details."""
+        plan = _make_trade_plan(
+            position_status="HELD", position_quantity=50, position_avg_cost=184.00,
+        )
+        plans = cross_reference([plan], [])
+        output = format_output(
+            account=self._make_account(), positions=[], open_orders=[],
+            plans=plans, timestamp="2026-02-25T14:30:00Z",
+        )
+        root = ET.fromstring(output)
+        tp = root.find("active-trade-plans/trade-plan")
+        assert tp is not None
+        assert tp.get("position_status") == "HELD"
+        assert tp.get("position_qty") == "50"
+        assert tp.get("position_avg_cost") == "184.00"
 
     def test_plan_without_optional_fields(self) -> None:
         """Trade plan without conviction/ev/rr should omit those attributes."""

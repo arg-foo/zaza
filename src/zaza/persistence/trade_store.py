@@ -124,6 +124,27 @@ class TradeXmlStore:
                 if summary.find(child_tag) is None:
                     errors.append(f"Missing <{child_tag}> in <summary>")
 
+        # <position>
+        position = root.find("position")
+        if position is None:
+            errors.append("Missing required element <position>")
+        else:
+            pos_status = position.find("status")
+            if pos_status is None:
+                errors.append("Missing <status> in <position>")
+            elif not pos_status.text or not pos_status.text.strip():
+                errors.append("Empty <status> in <position>")
+            pos_quantity = position.find("quantity")
+            if pos_quantity is None:
+                errors.append("Missing <quantity> in <position>")
+            elif not pos_quantity.text or not pos_quantity.text.strip():
+                errors.append("Empty <quantity> in <position>")
+            pos_avg_cost = position.find("avg_cost")
+            if pos_avg_cost is None:
+                errors.append("Missing <avg_cost> in <position>")
+            elif not pos_avg_cost.text or not pos_avg_cost.text.strip():
+                errors.append("Empty <avg_cost> in <position>")
+
         # <order>
         order = root.find("order")
         if order is None:

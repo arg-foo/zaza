@@ -20,6 +20,9 @@ def _make_plan(
     sl_stop_price: float = 180.00,
     sl_limit_price: float = 179.50,
     tp_limit_price: float = 194.50,
+    position_status: str = "NONE",
+    position_quantity: int = 0,
+    position_avg_cost: float = 0.0,
 ) -> TradePlan:
     return TradePlan(
         plan_id=plan_id,
@@ -32,6 +35,9 @@ def _make_plan(
         sl_stop_price=sl_stop_price,
         sl_limit_price=sl_limit_price,
         tp_limit_price=tp_limit_price,
+        position_status=position_status,
+        position_quantity=position_quantity,
+        position_avg_cost=position_avg_cost,
     )
 
 

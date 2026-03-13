@@ -29,6 +29,11 @@ VALID_TRADE_XML = """\
     <risk_reward_ratio>1:2.5</risk_reward_ratio>
     <rationale>RSI bouncing off 38 with bullish MACD crossover</rationale>
   </summary>
+  <position>
+    <status>NONE</status>
+    <quantity>0</quantity>
+    <avg_cost>0.0</avg_cost>
+  </position>
   <order>
     <order_id>BUY-AAPL-20260224-001</order_id>
     <entry>
@@ -82,6 +87,11 @@ COMPLETED_TRADE_XML = """\
     <risk_reward_ratio>1:2.0</risk_reward_ratio>
     <rationale>Momentum breakout above resistance</rationale>
   </summary>
+  <position>
+    <status>HELD</status>
+    <quantity>30</quantity>
+    <avg_cost>420.50</avg_cost>
+  </position>
   <order>
     <order_id>BUY-MSFT-20260225-001</order_id>
     <entry>
@@ -269,6 +279,11 @@ class TestParseTradePlan:
     <ticker>X</ticker>
     <quantity>10</quantity>
   </summary>
+  <position>
+    <status>NONE</status>
+    <quantity>0</quantity>
+    <avg_cost>0.0</avg_cost>
+  </position>
   <order>
     <order_id>BUY-X-001</order_id>
     <entry>
@@ -298,6 +313,66 @@ class TestParseTradePlan:
         assert plan.expected_value == ""
         assert plan.risk_reward_ratio == ""
         assert plan.entry_strategy == ""
+
+    def test_position_none_parsed(self) -> None:
+        """PENDING plan with position NONE parses position fields correctly."""
+        plan = parse_trade_plan(VALID_TRADE_XML)
+        assert plan is not None
+        assert plan.position_status == "NONE"
+        assert plan.position_quantity == 0
+        assert plan.position_avg_cost == 0.0
+
+    def test_position_held_parsed(self) -> None:
+        """COMPLETED plan with position HELD parses position fields correctly."""
+        plan = parse_trade_plan(COMPLETED_TRADE_XML)
+        assert plan is not None
+        assert plan.position_status == "HELD"
+        assert plan.position_quantity == 30
+        assert plan.position_avg_cost == 420.50
+
+    def test_non_numeric_position_quantity_defaults_to_zero(self) -> None:
+        """Non-numeric position quantity falls back to 0."""
+        xml = VALID_TRADE_XML.replace(
+            "<quantity>0</quantity>\n    <avg_cost>0.0</avg_cost>\n  </position>",
+            "<quantity>abc</quantity>\n    <avg_cost>0.0</avg_cost>\n  </position>",
+        )
+        plan = parse_trade_plan(xml)
+        assert plan is not None
+        assert plan.position_quantity == 0
+
+    def test_missing_position_returns_none(self) -> None:
+        """XML without <position> element returns None."""
+        xml = """\
+<trade-plan ticker="X" generated="2026-01-01">
+  <summary>
+    <side>BUY</side>
+    <ticker>X</ticker>
+    <quantity>10</quantity>
+  </summary>
+  <order>
+    <order_id>BUY-X-001</order_id>
+    <entry>
+      <status>PENDING</status>
+      <limit-order>
+        <limit_price>100.00</limit_price>
+      </limit-order>
+    </entry>
+    <exit>
+      <stop-loss>
+        <limit-order>
+          <stop_price>95.00</stop_price>
+          <limit_price>94.50</limit_price>
+        </limit-order>
+      </stop-loss>
+      <take-profit>
+        <limit-order>
+          <limit_price>110.00</limit_price>
+        </limit-order>
+      </take-profit>
+    </exit>
+  </order>
+</trade-plan>"""
+        assert parse_trade_plan(xml) is None
 
     def test_plan_id_not_set_by_parser(self) -> None:
         """plan_id should be empty string by default (set externally)."""

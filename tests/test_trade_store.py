@@ -135,6 +135,34 @@ class TestValidate:
         # The valid XML has a LIMIT entry order without stop_price - should pass
         assert errors == []
 
+    def test_validate_missing_position(self, store) -> None:
+        """XML without <position> element produces an error."""
+        xml = '<trade-plan ticker="AAPL" generated="2026-02-24 14:30 UTC"><summary><side>BUY</side><ticker>AAPL</ticker><quantity>10</quantity></summary><order><order_id>1</order_id><entry><status>PENDING</status><strategy>s</strategy><trigger>t</trigger><limit-order><type>LIMIT</type><side>BUY</side><ticker>AAPL</ticker><quantity>10</quantity><limit_price>100</limit_price><time_in_force>DAY</time_in_force></limit-order></entry><exit><stop-loss><limit-order><type>STOP_LIMIT</type><side>SELL</side><ticker>AAPL</ticker><quantity>10</quantity><stop_price>91</stop_price><limit_price>90</limit_price><time_in_force>GTC</time_in_force></limit-order></stop-loss><take-profit><limit-order><type>LIMIT</type><side>SELL</side><ticker>AAPL</ticker><quantity>10</quantity><limit_price>110</limit_price><time_in_force>GTC</time_in_force></limit-order></take-profit></exit></order></trade-plan>'
+        errors = store.validate(xml)
+        assert len(errors) > 0
+        assert any("position" in e.lower() for e in errors)
+
+    def test_validate_empty_position_status(self, store) -> None:
+        """XML with empty <status> in <position> produces an error."""
+        xml = '<trade-plan ticker="AAPL" generated="2026-02-24 14:30 UTC"><summary><side>BUY</side><ticker>AAPL</ticker><quantity>10</quantity></summary><position><status></status><quantity>0</quantity><avg_cost>0.0</avg_cost></position><order><order_id>1</order_id><entry><status>PENDING</status><strategy>s</strategy><trigger>t</trigger><limit-order><type>LIMIT</type><side>BUY</side><ticker>AAPL</ticker><quantity>10</quantity><limit_price>100</limit_price><time_in_force>DAY</time_in_force></limit-order></entry><exit><stop-loss><limit-order><type>STOP_LIMIT</type><side>SELL</side><ticker>AAPL</ticker><quantity>10</quantity><stop_price>91</stop_price><limit_price>90</limit_price><time_in_force>GTC</time_in_force></limit-order></stop-loss><take-profit><limit-order><type>LIMIT</type><side>SELL</side><ticker>AAPL</ticker><quantity>10</quantity><limit_price>110</limit_price><time_in_force>GTC</time_in_force></limit-order></take-profit></exit></order></trade-plan>'
+        errors = store.validate(xml)
+        assert len(errors) > 0
+        assert any("empty" in e.lower() and "status" in e.lower() and "position" in e.lower() for e in errors)
+
+    def test_validate_missing_position_quantity(self, store) -> None:
+        """XML without <quantity> in <position> produces an error."""
+        xml = '<trade-plan ticker="AAPL" generated="2026-02-24 14:30 UTC"><summary><side>BUY</side><ticker>AAPL</ticker><quantity>10</quantity></summary><position><status>NONE</status><avg_cost>0.0</avg_cost></position><order><order_id>1</order_id><entry><status>PENDING</status><strategy>s</strategy><trigger>t</trigger><limit-order><type>LIMIT</type><side>BUY</side><ticker>AAPL</ticker><quantity>10</quantity><limit_price>100</limit_price><time_in_force>DAY</time_in_force></limit-order></entry><exit><stop-loss><limit-order><type>STOP_LIMIT</type><side>SELL</side><ticker>AAPL</ticker><quantity>10</quantity><stop_price>91</stop_price><limit_price>90</limit_price><time_in_force>GTC</time_in_force></limit-order></stop-loss><take-profit><limit-order><type>LIMIT</type><side>SELL</side><ticker>AAPL</ticker><quantity>10</quantity><limit_price>110</limit_price><time_in_force>GTC</time_in_force></limit-order></take-profit></exit></order></trade-plan>'
+        errors = store.validate(xml)
+        assert len(errors) > 0
+        assert any("quantity" in e.lower() and "position" in e.lower() for e in errors)
+
+    def test_validate_missing_position_avg_cost(self, store) -> None:
+        """XML without <avg_cost> in <position> produces an error."""
+        xml = '<trade-plan ticker="AAPL" generated="2026-02-24 14:30 UTC"><summary><side>BUY</side><ticker>AAPL</ticker><quantity>10</quantity></summary><position><status>NONE</status><quantity>0</quantity></position><order><order_id>1</order_id><entry><status>PENDING</status><strategy>s</strategy><trigger>t</trigger><limit-order><type>LIMIT</type><side>BUY</side><ticker>AAPL</ticker><quantity>10</quantity><limit_price>100</limit_price><time_in_force>DAY</time_in_force></limit-order></entry><exit><stop-loss><limit-order><type>STOP_LIMIT</type><side>SELL</side><ticker>AAPL</ticker><quantity>10</quantity><stop_price>91</stop_price><limit_price>90</limit_price><time_in_force>GTC</time_in_force></limit-order></stop-loss><take-profit><limit-order><type>LIMIT</type><side>SELL</side><ticker>AAPL</ticker><quantity>10</quantity><limit_price>110</limit_price><time_in_force>GTC</time_in_force></limit-order></take-profit></exit></order></trade-plan>'
+        errors = store.validate(xml)
+        assert len(errors) > 0
+        assert any("avg_cost" in e.lower() and "position" in e.lower() for e in errors)
+
     def test_validate_empty_limit_order_fields(self, store) -> None:
         """Empty text in limit-order fields produces validation errors (CR-07)."""
         xml = '<trade-plan ticker="AAPL" generated="2026-02-24 14:30 UTC"><summary><side>BUY</side><ticker>AAPL</ticker><quantity>10</quantity></summary><order><order_id>1</order_id><entry><status>PENDING</status><strategy>s</strategy><trigger>t</trigger><limit-order><type></type><side>BUY</side><ticker>AAPL</ticker><quantity>10</quantity><limit_price>100</limit_price><time_in_force>DAY</time_in_force></limit-order></entry><exit><stop-loss><limit-order><type>STOP_LIMIT</type><side>SELL</side><ticker>AAPL</ticker><quantity>10</quantity><stop_price>91</stop_price><limit_price>90</limit_price><time_in_force>GTC</time_in_force></limit-order></stop-loss><take-profit><limit-order><type>LIMIT</type><side>SELL</side><ticker>AAPL</ticker><quantity>10</quantity><limit_price>110</limit_price><time_in_force>GTC</time_in_force></limit-order></take-profit></exit></order></trade-plan>'

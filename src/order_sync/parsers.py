@@ -34,6 +34,10 @@ class TradePlan:
     sl_stop_price: float = 0.0
     sl_limit_price: float = 0.0
     tp_limit_price: float = 0.0
+    # Position tracking (synced from broker data)
+    position_status: str = "NONE"  # NONE or HELD
+    position_quantity: int = 0
+    position_avg_cost: float = 0.0
     # Metadata (used by prompt_context, ignored by order_sync planner/executor)
     conviction: str = ""
     expected_value: str = ""
@@ -76,6 +80,11 @@ def parse_trade_plan(xml_string: str | None) -> TradePlan | None:
     quantity_elem = summary.find("quantity")
 
     if side_elem is None or ticker_elem is None or quantity_elem is None:
+        return None
+
+    # Position (required)
+    position = root.find("position")
+    if position is None:
         return None
 
     # Order (required)
@@ -130,6 +139,14 @@ def parse_trade_plan(xml_string: str | None) -> TradePlan | None:
     except (ValueError, TypeError):
         return None
 
+    # Parse position fields
+    pos_status = (position.findtext("status") or "NONE").strip()
+    try:
+        pos_quantity = int(float((position.findtext("quantity") or "0").strip()))
+    except (ValueError, TypeError):
+        pos_quantity = 0
+    pos_avg_cost = _safe_float(position.find("avg_cost"))
+
     return TradePlan(
         plan_id="",  # Set externally
         ticker=root.get("ticker", ""),
@@ -141,6 +158,9 @@ def parse_trade_plan(xml_string: str | None) -> TradePlan | None:
         sl_stop_price=_safe_float(sl_stop_elem),
         sl_limit_price=_safe_float(sl_limit_elem),
         tp_limit_price=_safe_float(tp_limit_elem),
+        position_status=pos_status,
+        position_quantity=pos_quantity,
+        position_avg_cost=pos_avg_cost,
         conviction=(summary.findtext("conviction") or "").strip(),
         expected_value=(summary.findtext("expected_value") or "").strip(),
         risk_reward_ratio=(summary.findtext("risk_reward_ratio") or "").strip(),

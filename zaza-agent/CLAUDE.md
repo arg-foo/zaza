@@ -123,7 +123,7 @@
 
 <routing>
   <rule>ALWAYS delegate to a sub-agent. Never call MCP tools directly in the main context
-  except during portfolio-flow Steps 1-4 (which have their own tool calls defined).
+  except during portfolio-flow Steps 1, 3, 5, 6 (which have their own tool calls defined).
   Every user query or research task MUST be routed to the appropriate agent below.</rule>
 
   <agents>
@@ -157,127 +157,155 @@
 <!-- ================================================================ -->
 <!-- PORTFOLIO FLOW: Top-level entry point for every invocation       -->
 <!--                                                                  -->
-<!--   Step 1 -> Step 2 -> (if rebalance) analysis-flow              -->
-<!--                        -> Step 3 -> Step 4                       -->
-<!--                     -> (if no rebalance) Step 4                  -->
+<!--   Step 1 (Sync) -> Step 2 (Analyze) -> Step 3 (Update Plans)    -->
+<!--   -> Step 4 (New Opportunities) -> Step 5 (Execute) -> Step 6   -->
 <!-- ================================================================ -->
 
 <portfolio-flow>
 
-  <step id="1" name="Assess Portfolio &amp; Active Plans">
+  <step id="1" name="Sync State">
+    Reconcile trade plan XML with live broker state from &lt;portfolio-context&gt;. Direct MCP tool calls only.
 
-    Part A — Load Active Plans (plans are the primary entity):
-      1. list_trade_plans(status="active") - fetch all active plans
-      2. get_trade_plan(id) per plan - parse XML for ticker, entry/stop/target, thesis, entry status
-      3. get_positions() - fetch all held positions
-      4. Match each position to its corresponding trade plan by ticker
+    For EACH active trade plan in &lt;active_trade_plans&gt;:
+      Cross-reference with &lt;positions&gt; and &lt;open_orders&gt; to detect mismatches:
 
-    Part B — Per-Plan Analysis (parallel across plans):
-    For EACH active trade plan:
-      1. Identify the plan's ticker, entry/stop/target levels, original thesis, and entry status
-      2. Delegate to sub-agents in parallel:
-         - ta agent: full TA to check if levels and directional bias still hold
-         - sentiment agent: has sentiment shifted since plan creation?
-         - options agent: has positioning changed (IV, flow, GEX)?
-      3. If position exists for this plan (entry COMPLETED):
-         a. get_price_snapshot(ticker) - current price, daily change, volume
-         b. get_momentum_indicators(ticker) - RSI, MACD, Stochastic
-         c. Classify position:
-            HOLD: RSI 40-70, MACD bullish/neutral, above support
-            TRIM: RSI &gt; 75, weight &gt; 25%, or weakening momentum at resistance
-            EXIT: RSI &gt; 80 or &lt; 25 with bearish MACD crossover, broken support, stop breached
-      4. Compare fresh analysis against the plan's original thesis:
-         - Are entry levels still valid or has S/R shifted?
-         - Is directional bias (bullish/bearish) still intact?
-         - Has sentiment or options positioning flipped?
-      5. Classify each plan:
-         KEEP: thesis intact, levels still valid
-         MODIFY: directional bias intact but levels need adjustment (update entry/stop/target)
-         CANCEL: thesis invalidated (trend reversed, key support broken, sentiment flipped)
+      a. ENTRY FILLED (plan: entry=PENDING, broker: position held for ticker):
+         get_trade_plan(plan_id) -> update entry status to COMPLETED,
+         position status to HELD with qty/avg_cost from broker -> update_trade_plan
 
-    If no positions AND no active plans: rebalance = true (if cash &gt; 0), false (if cash = 0).
+      b. TP/SL HIT (plan: entry=COMPLETED, broker: no position AND no open orders for ticker):
+         Determine if TP or SL hit by comparing avg_cost to last price.
+         close_trade_plan(plan_id, reason="target_hit|stop_hit")
 
-    Output: portfolio_summary {cash, invested, total},
-            plan_assessments [{plan_id, ticker, KEEP|MODIFY|CANCEL, position: HOLD|TRIM|EXIT|null, rationale, updated_levels if MODIFY}],
-            rebalance_needed (bool)
+      c. EXPIRED ORDERS (plan has order_id, but order_id not in &lt;open_orders&gt;):
+         Flag for Step 5 (needs new bracket or OCA). No XML change yet.
+
+      d. PARTIAL FILL (plan: qty=100, broker: position qty&lt;100, entry order still open):
+         Note partial state. Do not modify plan -- let bracket continue.
+
+    For EACH position in &lt;positions&gt; WITHOUT a matching trade plan:
+      Flag as ORPHAN. Report in output. Do not auto-create plans.
+
+    Tools: get_trade_plan, update_trade_plan, close_trade_plan
+    Output: synced_plans [{plan_id, ticker, entry_status, position_status, orders_status}],
+            closed_plans [{plan_id, reason}],
+            orphan_positions [{ticker, qty, avg_cost}],
+            portfolio_summary {cash, invested, total, buying_power}
   </step>
 
-  <step id="2" name="Decision Gate" eval="first-match">
-    IF cash = 0 AND no positions AND no active plans:
-      Skip to Step 4. "No funds to manage."
+  <step id="2" name="Per-Plan Analysis">
+    If no active plans remain after Step 1: skip to Step 4.
 
-    ELSE IF all positions HOLD AND all plans KEEP AND cash lesser than 10% of total balance:
-      Skip to Step 4. Report health status and plan validation results.
+    For EACH active trade plan, delegate in parallel:
+      - ta agent: momentum (RSI, MACD, Stochastic), S/R levels, trend strength
+        vs plan's entry/stop/target levels
+      - sentiment agent: has sentiment shifted since plan creation?
+      - options agent: IV, flow, GEX changes?
 
-    ELSE (any TRIM/EXIT, any MODIFY/CANCEL plans, deployable cash, or concentration &gt; 25%):
-      Run analysis-flow (Phases 1-5) for new candidates, then Step 3, then Step 4.
+    Evaluate each plan against fresh analysis:
+      - Are entry/stop/target levels still technically valid?
+      - Is directional bias still intact?
+      - Has sentiment or options positioning flipped?
+
+    Classify:
+      KEEP: thesis intact, levels valid.
+      MODIFY: bias intact but levels need adjustment. OR thesis invalidated
+        BUT position HELD -- tighten stop/target for graceful exit.
+        Specify new entry/stop/target levels from TA.
+      CANCEL: thesis invalidated AND position status=NONE (no held shares).
+        Never CANCEL a plan with a held position -- use MODIFY to exit gracefully.
+
+    Output: plan_assessments [{plan_id, ticker, action: KEEP|MODIFY|CANCEL,
+            rationale, new_levels: {entry, stop, target} if MODIFY}]
   </step>
 
-  <step id="3" name="Generate Orders" requires="analysis-flow">
-    1. PLAN UPDATES: For each MODIFY plan:
-       - Cancel existing broker orders for that plan (mcp__tiger__cancel_order)
-       - Update plan XML with new levels via update_trade_plan
-       For each CANCEL plan:
-       - Cancel existing broker orders for that plan
-       - close_trade_plan(plan_id, reason="thesis_invalidated")
-    2. EXIT/TRIM: For positions to reduce or close - cancel existing bracket/OCA, close_trade_plan
-    3. BUY: From analysis top picks with positive EV + high confidence
-       - Max 20% portfolio per position
-       - Entry/stop/target from Phase 2 TA + Phase 4 backtesting
-    4. Calculate net portfolio impact
-    5. Output: | Action | Ticker | Side | Qty | Price | Stop | Target | EV | Rationale |
-       Include portfolio-after allocation summary.
-    6. For each NEW trade: save_trade_plan(xml). Record plan_id.
+  <step id="3" name="Update Plans">
+    If all plans assessed as KEEP in Step 2: skip to Step 4.
+
+    For MODIFY plans:
+      get_trade_plan(plan_id) -> update entry/stop/target levels in XML
+      -> update_trade_plan(plan_id, updated_xml)
+      If thesis invalidated with HELD position: set stop near current price,
+      target at breakeven or minimal loss for graceful exit.
+
+    For CANCEL plans (position status=NONE only):
+      close_trade_plan(plan_id, reason="thesis_invalidated")
+
+    Tools: get_trade_plan, update_trade_plan, close_trade_plan
+    Output: updated_plans [{plan_id, changes}], cancelled_plans [{plan_id, reason}]
+  </step>
+
+  <step id="4" name="New Opportunities">
+    If cash &lt; 10% of net liquidation: skip to Step 5.
+
+    Run analysis-flow (Phases 1-5) for new candidates.
+
+    From top picks with positive EV and HIGH/MEDIUM conviction:
+      - Max 20% portfolio per position
+      - Risk &lt;= 3% per trade
+      - R:R &gt;= 1:1.5
+      - Entry/stop/target from Phase 2 TA + Phase 4 backtesting
+
+    For each new trade: save_trade_plan(xml). Record plan_id.
 
     Constraint: Only trade when EV justifies risk. "No trade" is valid. Never force entries.
+    Output: new_plans [{plan_id, ticker, side, qty, entry, stop, target, EV, conviction}]
+            Include portfolio-after allocation summary.
   </step>
 
-  <step id="4" name="Execute Orders" runs="always">
-    1. DISCOVER plan states:
-       a. list_trade_plans(status="active") - ALL active plans (not just this session)
-       b. mcp__tiger__get_open_orders() - all live broker orders
-       c. get_trade_plan(id) per plan - parse XML
-       d. CLASSIFY each plan:
-          NEEDS_BRACKET: entry status=PENDING AND order_id not in open orders (new or expired bracket)
-          NEEDS_OCA: entry status=COMPLETED AND order_id not in open orders (TP/SL expired, need renewal)
-          ACTIVE: order_id found in open orders (no action needed)
-          FILLED: TP or SL filled (close plan)
+  <step id="5" name="Execute Orders">
+    Process ALL active trade plans that need broker action.
 
-    2. CLOSE filled plans:
-       For each FILLED: close_trade_plan(reason="target_hit|stop_hit")
+    Classify each active plan using synced state from Step 1 + updates from Steps 3-4:
+      NEEDS_BRACKET: entry=PENDING, no open BUY order for ticker (new or expired)
+      NEEDS_OCA: entry=COMPLETED, position held, no open SELL orders (expired TP/SL)
+      ACTIVE: matching orders exist in &lt;open_orders&gt; with correct prices -- no action
+      STALE: orders exist but at OLD prices (pre-MODIFY levels) -- cancel and re-place
 
-    3. PLACE BRACKETS (new entries + protective orders in one atomic order):
-       For each NEEDS_BRACKET:
-         place_bracket_order(symbol, qty, entry_limit, tp_limit, sl_stop, sl_limit)
-         -> verify no errors in response
-         -> record order_id in plan XML
-         -> update_trade_plan
+    Execution order (safety-critical):
+      1. CANCEL stale orders: For each STALE plan, cancel_order(old_order_id).
+         Wait for confirmation before proceeding.
+      2. PLACE OCA first (protect held positions):
+         For each NEEDS_OCA or STALE-with-position:
+           Fetch current held qty from get_positions() for accurate sizing.
+           place_oca_order(symbol, held_qty, tp_limit, sl_stop, sl_limit)
+           -> record order_id in plan XML -> update_trade_plan
+      3. PLACE BRACKETS (new entries):
+         For each NEEDS_BRACKET:
+           place_bracket_order(symbol, qty, entry_limit, tp_limit, sl_stop, sl_limit)
+           -> record order_id in plan XML -> update_trade_plan
 
-    4. PLACE OCA (renew expired TP/SL for filled entries):
-       For each NEEDS_OCA:
-         Fetch current held qty from get_positions() for accurate sizing
-         place_oca_order(symbol, qty, tp_limit, sl_stop, sl_limit)
-         -> verify no errors in response
-         -> record new order_id in plan XML, entry status stays COMPLETED
-         -> update_trade_plan
-
-    5. VERIFY: get_open_orders() - cross-check all active plans
-
-    6. PERSIST: For each placed/updated order:
-       get_trade_plan -> update order_id in XML -> update_trade_plan
-       When entry fills (status PENDING->COMPLETED): update status in XML
-       When closed: close_trade_plan(reason="target_hit|stop_hit|manual_exit|cancelled")
-
-    Constraint: NEVER place an order without both a stop-loss and a take-profit. All orders must use place_bracket_order or place_oca_order.
+    Protection audit:
+      get_positions() + get_open_orders()
+      For every held position, verify at least one SELL order exists.
+      If unprotected: emergency place_oca_order, retry up to 2x.
 
     Error rules:
-    - Place fails -> retry once, then skip
-    - Bracket fails -> no position opened, safe to skip
-    - OCA fails -> position has no protection, MUST retry or alert
-    - Insufficient funds -> prioritize HIGH conviction brackets, skip rest
+      - Bracket fails -> no position opened, safe to skip. Log warning.
+      - OCA fails -> position unprotected. MUST retry once. If still fails: CRITICAL alert.
+      - Insufficient funds -> prioritize HIGH conviction brackets, skip LOW.
 
-    Output: | Status | Ticker | Side | Qty | Type | Price | Order ID | Notes |
-    End with: get_positions() + get_account_summary()
+    Constraint: NEVER place an order without both a stop-loss and a take-profit.
+    All orders must use place_bracket_order or place_oca_order.
+
+    Tools: cancel_order, place_bracket_order, place_oca_order, get_trade_plan,
+           update_trade_plan, get_positions, get_open_orders
+    Output: | Action | Ticker | Type | Qty | Entry | Stop | Target | Order ID | Status |
+  </step>
+
+  <step id="6" name="Output Summary" runs="always">
+    Final state: get_positions() + get_account_summary() + get_open_orders()
+
+    Portfolio table:
+      | Ticker | Qty | Avg Cost | Current | P&amp;L | Weight | Stop | Target | Order Status |
+
+    Metrics: Cash | Invested | Total | Buying Power | Unrealized P&amp;L
+
+    Session actions:
+      Plans synced | Plans modified | Plans cancelled | Plans created |
+      Orders placed | Orders cancelled | Errors
+
+    If no actions taken: "Portfolio healthy. All plans validated. No changes needed."
   </step>
 
 </portfolio-flow>
@@ -316,7 +344,7 @@
 </analysis-flow>
 
 <!-- ================================================================ -->
-<!-- TRADE PLAN SCHEMA: Step 3 must output this XML per trade         -->
+<!-- TRADE PLAN SCHEMA: Step 4 must output this XML per trade          -->
 <!-- ================================================================ -->
 
 <trade-plan-schema>
@@ -332,6 +360,11 @@
         <risk_reward_ratio>{R:R}</risk_reward_ratio>
         <rationale>{1-2 sentences from analysis}</rationale>
       </summary>
+      <position>
+        <status>{NONE|HELD}</status>
+        <quantity>{shares held, 0 if NONE}</quantity>
+        <avg_cost>{average entry price}</avg_cost>
+      </position>
       <order>
         <order_id>SOME_ORDER_ID</order_id>
         <entry>
@@ -386,6 +419,9 @@
 
   <rules>
     - Each trade: exactly 1 entry + 1 stop-loss + 1 take-profit order minimum
+    - &lt;position&gt; block is updated from broker data during Step 1 (sync) and Step 5 (execution)
+    - When entry fills: entry status -> COMPLETED, position status -> HELD, populate qty/avg_cost
+    - When exiting: close_trade_plan, position block reflects final state
     - order_id unique. Format: {SIDE}-{TICKER}-{YYYYMMDD}-{SEQ}, suffixes: -SL, -TP, -PT
     - stop_price != limit_price on stop orders (limit beyond stop for fill)
     - risk_pct &lt;= 3% of total portfolio per trade
