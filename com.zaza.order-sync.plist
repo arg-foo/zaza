@@ -7,11 +7,7 @@
 
     <key>ProgramArguments</key>
     <array>
-        <string>/Users/zifcrypto/.local/bin/uv</string>
-        <string>run</string>
-        <string>python</string>
-        <string>-m</string>
-        <string>order_sync</string>
+        <string>/Users/zifcrypto/Desktop/zaza/scripts/order-sync-launcher.sh</string>
     </array>
 
     <key>WorkingDirectory</key>
