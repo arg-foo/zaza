@@ -1,0 +1,65 @@
+<trade-plan ticker="{TICKER}" generated="{YYYY-MM-DD HH:MM UTC}">
+  <summary>
+    <side>{BUY|SELL}</side>
+    <ticker>{TICKER}</ticker>
+    <quantity>{shares}</quantity>
+    <conviction>{HIGH|MEDIUM|LOW}</conviction>
+    <expected_value>{+X.XX%}</expected_value>
+    <risk_reward_ratio>{R:R}</risk_reward_ratio>
+    <rationale>{1-2 sentences from analysis}</rationale>
+  </summary>
+  <position>
+    <status>{NONE|HELD}</status>
+    <quantity>{shares held, 0 if NONE}</quantity>
+    <avg_cost>{average entry price}</avg_cost>
+  </position>
+  <order>
+    <order_id>SOME_ORDER_ID</order_id>
+    <entry>
+      <status>{PENDING|COMPLETED}</status>
+      <strategy>{breakout_buy|pullback_buy|momentum_entry|mean_reversion|gap_fill|support_bounce|exit_position|trim_position}</strategy>
+      <trigger>{specific condition}</trigger>
+      <limit-order>
+        <type>LIMIT</type>
+        <side>BUY</side>
+        <ticker>{TICKER}</ticker>
+        <quantity>{shares}</quantity>
+        <limit_price>{price}</limit_price>
+        <time_in_force>{DAY|GTC}</time_in_force>
+        <notes>{price level basis: S/R, VWAP, Fib}</notes>
+      </limit-order>
+    </entry>
+    <exit>
+      <stop-loss>
+        <strategy>{hard_stop|trailing_stop|break_even_stop}</strategy>
+        <trigger>{condition}</trigger>
+        <risk_pct>{max portfolio loss %}</risk_pct>
+        <limit-order>
+          <type>STOP_LIMIT</type>
+          <side>SELL</side>
+          <ticker>{TICKER}</ticker>
+          <quantity>{shares}</quantity>
+          <stop_price>{trigger price}</stop_price>
+          <limit_price>{fill price, slightly beyond stop}</limit_price>
+          <time_in_force>DAY</time_in_force>
+          <notes>{technical basis}</notes>
+        </limit-order>
+      </stop-loss>
+      <take-profit>
+        <strategy>{target_exit|scaled_exit|trailing_target}</strategy>
+        <trigger>{condition}</trigger>
+        <reward_pct>{gain %}</reward_pct>
+        <limit-order>
+          <type>LIMIT</type>
+          <side>SELL</side>
+          <ticker>{TICKER}</ticker>
+          <quantity>{shares}</quantity>
+          <limit_price>{target}</limit_price>
+          <time_in_force>DAY</time_in_force>
+          <notes>{technical basis}</notes>
+        </limit-order>
+      </take-profit>
+      <time_exit>{fallback exit condition}</time_exit>
+    </exit>
+  </order>
+</trade-plan>
