@@ -39,6 +39,12 @@ def _extract_metadata(plan_id: str, xml_string: str, status: str = "active") -> 
             meta["side"] = side_elem.text if side_elem is not None else ""
         else:
             meta["side"] = ""
+        position = root.find("position")
+        if position is not None:
+            pos_status_elem = position.find("status")
+            meta["position_status"] = pos_status_elem.text.strip() if pos_status_elem is not None and pos_status_elem.text else ""
+        else:
+            meta["position_status"] = ""
     except ET.ParseError:
         meta["ticker"] = ""
         meta["side"] = ""

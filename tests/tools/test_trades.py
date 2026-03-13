@@ -131,6 +131,7 @@ class TestListTradePlans:
         assert "plan_id" in plan
         assert plan["ticker"] == "AAPL"
         assert plan["side"] == "BUY"
+        assert plan["position_status"] == "NONE"
 
     async def test_list_includes_archived(self, tools) -> None:
         """list_trade_plans with include_archived=True shows archived plans."""

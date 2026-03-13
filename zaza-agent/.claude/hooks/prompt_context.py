@@ -103,6 +103,9 @@ def cross_reference(plans: list[TradePlan], open_orders: list[dict]) -> list[dic
             "sl_stop_price": plan.sl_stop_price,
             "sl_limit_price": plan.sl_limit_price,
             "tp_limit_price": plan.tp_limit_price,
+            "position_status": plan.position_status,
+            "position_quantity": plan.position_quantity,
+            "position_avg_cost": plan.position_avg_cost,
             "order_status": order_lookup[plan.order_id]["status"]
             if plan.order_id in order_lookup
             else "UNKNOWN",
@@ -201,7 +204,13 @@ def format_output(
             "ticker": plan.get("ticker", ""),
             "side": plan.get("side", ""),
             "qty": plan.get("quantity", ""),
+            "position_status": plan.get("position_status", "NONE"),
         }
+
+        # Add position details when HELD
+        if plan.get("position_status") == "HELD":
+            plan_attrs["position_qty"] = str(plan.get("position_quantity", 0))
+            plan_attrs["position_avg_cost"] = f"{plan.get('position_avg_cost', 0.0):.2f}"
 
         # Add optional attributes only if present
         if plan.get("conviction") is not None:
