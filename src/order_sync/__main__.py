@@ -33,9 +33,14 @@ def main() -> None:
         action="store_true",
         help="Show computed intents without placing orders",
     )
+    parser.add_argument(
+        "--force",
+        action="store_true",
+        help="Bypass the market-open time gate",
+    )
     args = parser.parse_args()
 
-    if not args.dry_run and not is_market_open_window():
+    if not args.dry_run and not args.force and not is_market_open_window():
         now_et = datetime.now(ET)
         logger.info(
             "Outside market open window (current ET: %s). Exiting.",

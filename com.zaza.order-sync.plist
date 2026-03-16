@@ -10,9 +10,6 @@
         <string>/Users/zifcrypto/Desktop/zaza/scripts/order-sync-launcher.sh</string>
     </array>
 
-    <key>WorkingDirectory</key>
-    <string>/Users/zifcrypto/Desktop/zaza</string>
-
     <!-- DST-aware dual schedule for 9:31 AM ET weekdays -->
     <!-- EDT (Mar-Nov): 13:31 UTC = 9:31 AM ET (runs), 14:31 UTC = 10:31 AM ET (exits) -->
     <!-- EST (Nov-Mar): 13:31 UTC = 8:31 AM ET (exits), 14:31 UTC = 9:31 AM ET (runs) -->
