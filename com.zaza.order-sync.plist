@@ -7,7 +7,7 @@
 
     <key>ProgramArguments</key>
     <array>
-        <string>/Users/zifcrypto/Desktop/zaza/scripts/order-sync-launcher.sh</string>
+        <string>/Users/zifcrypto/.zaza/scripts/order-sync-launcher.sh</string>
     </array>
 
     <!-- DST-aware dual schedule for 9:31 AM ET weekdays -->
