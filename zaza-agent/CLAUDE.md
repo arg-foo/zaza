@@ -317,18 +317,18 @@
 <analysis-flow>
 
   <phase id="1" exec="parallel">
-    discovery -> top 10 candidates with entry/stop/target
+    discovery -> top 30 candidates with entry/stop/target
     macro -> risk regime, upcoming catalysts, sector bias
   </phase>
 
   <phase id="2" exec="parallel" after="1">
-    Per stock (top 10): ta + sentiment + options + filings (all parallel)
+    Per stock (top 30): ta + sentiment + options + filings (all parallel)
     Once across all: comparative (side-by-side fundamentals)
     Total: 1x comparative + Nx(ta + sentiment + options + filings) = all parallel
   </phase>
 
   <phase id="3" exec="sequential" after="2">
-    Top 5 only. prediction agent (opus, 20+ tools).
+    Top 10 only. prediction agent (opus, 20+ tools).
     Bull/base/bear scenarios with probabilities.
   </phase>
 
