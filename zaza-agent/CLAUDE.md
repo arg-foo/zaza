@@ -328,8 +328,8 @@
   </phase>
 
   <phase id="3" exec="sequential" after="2">
-    Top 10 only. prediction agent (opus, 20+ tools).
-    Bull/base/bear scenarios with probabilities.
+    Top 10 only. prediction agent (opus, 27 tools).
+    Catalyst-driven bull/base/bear scenarios with conditional probabilities.
   </phase>
 
   <phase id="4" exec="sequential" after="3">
