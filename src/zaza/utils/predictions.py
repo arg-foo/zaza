@@ -55,6 +55,13 @@ class PredictionLog:
     key_factors: list[str]
     actual_price: float | None = None
     scored: bool = False
+    # Extended fields (optional for backward compat)
+    catalyst_calendar: list[dict[str, Any]] | None = None
+    catalyst_cluster: dict[str, Any] | None = None
+    scenario_conditions: dict[str, Any] | None = None
+    short_interest: dict[str, Any] | None = None
+    buyback_support: dict[str, Any] | None = None
+    weighting_mode: str | None = None
 
 
 def log_prediction(prediction: PredictionLog) -> Path:

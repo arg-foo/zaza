@@ -8,6 +8,9 @@
     <risk_reward_ratio>{R:R}</risk_reward_ratio>
     <rationale>{1-2 sentences from analysis}</rationale>
   </summary>
+  <prediction>
+    <file>{TICKER}_{PREDICTION_DATE}_{HORIZON}d.json</file>
+  </prediction>
   <position>
     <status>{NONE|HELD}</status>
     <quantity>{shares held, 0 if NONE}</quantity>

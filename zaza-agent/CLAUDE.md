@@ -88,10 +88,11 @@
   <tool name="get_event_calendar"          query="ex-div, splits, rebalancing, lockup" />
   <tool name="get_buyback_data"            query="buyback program, shares repurchased" />
 
-  <!-- Backtesting (4) -->
+  <!-- Backtesting (5) -->
   <tool name="get_signal_backtest"         query="signal win rate, profit factor" />
   <tool name="get_strategy_simulation"     query="full strategy equity curve, CAGR" />
   <tool name="get_prediction_score"        query="past prediction accuracy" />
+  <tool name="get_prediction"              query="full prediction data for a ticker" />
   <tool name="get_risk_metrics"            query="Sharpe, Sortino, max DD, VaR, alpha" />
 
   <!-- Screener (3) -->
@@ -139,10 +140,13 @@
     | macro       | sonnet | macro environment, yields, indices, commodities, economic calendar |
     | prediction  | opus   | "price prediction", "where will X be", "probability", forecasts |
     | backtesting | sonnet | "backtest RSI on X", "test strategy", "win rate", signal validation |
+    | reevaluate  | opus   | Step 2 Phase B only — drift analysis of active trade plans |
   </agents>
 
   <priority>
     - Prediction subsumes TA + Macro + Sentiment + Options (don't duplicate)
+    - Reevaluate subsumes Prediction for active plan assessment (don't run both)
+    - Reevaluate is only called in Step 2 Phase B, never for new predictions
     - When ambiguous, prefer the more specific agent
     - Spawn independent agents in parallel
   </priority>
@@ -196,26 +200,28 @@
   <step id="2" name="Per-Plan Analysis">
     If no active plans remain after Step 1: skip to Step 4.
 
-    For EACH active trade plan, delegate in parallel:
-      - ta agent: momentum (RSI, MACD, Stochastic), S/R levels, trend strength
-        vs plan's entry/stop/target levels
-      - sentiment agent: has sentiment shifted since plan creation?
-      - options agent: IV, flow, GEX changes?
+    Phase A — For EACH active trade plan, delegate in parallel:
+      - ta agent: momentum, S/R levels, trend strength, money flow, volume,
+        volatility bands, patterns vs plan's entry/stop/target levels
+      - sentiment agent: news, social, insider sentiment shifts since plan creation
+      - options agent: IV, flow, GEX, P/C ratio, max pain, chain changes
 
-    Evaluate each plan against fresh analysis:
-      - Are entry/stop/target levels still technically valid?
-      - Is directional bias still intact?
-      - Has sentiment or options positioning flipped?
+    Phase B — For EACH active trade plan (after Phase A completes):
+      - reevaluate agent (opus): receives Phase A summaries + plan XML
+        Calls 19 tools (quant, macro, catalysts, positioning) + get_prediction
+        Compares original prediction vs fresh combined analysis
+        Outputs drift assessment → KEEP|MODIFY|CANCEL with rationale + new levels
 
     Classify:
-      KEEP: thesis intact, levels valid.
-      MODIFY: bias intact but levels need adjustment. OR thesis invalidated
-        BUT position HELD -- tighten stop/target for graceful exit.
+      KEEP: thesis intact, levels valid, drift ON_TRACK.
+      MODIFY: bias intact but levels need adjustment, OR moderate drift,
+        OR thesis invalidated BUT position HELD -- tighten stop/target for graceful exit.
         Specify new entry/stop/target levels from TA.
-      CANCEL: thesis invalidated AND position status=NONE (no held shares).
+      CANCEL: thesis invalidated, severe drift, AND position status=NONE (no held shares).
         Never CANCEL a plan with a held position -- use MODIFY to exit gracefully.
 
     Output: plan_assessments [{plan_id, ticker, action: KEEP|MODIFY|CANCEL,
+            price_drift, catalyst_drift, scenario_status,
             rationale, new_levels: {entry, stop, target} if MODIFY}]
   </step>
 
@@ -247,6 +253,9 @@
       - Entry/stop/target from Phase 2 TA + Phase 4 backtesting
 
     For each new trade: save_trade_plan(xml). Record plan_id.
+    For each new trade informed by a prediction:
+      Include <prediction><file>{prediction_filename}</file></prediction> in the trade plan XML.
+      The prediction filename follows the format: {TICKER}_{PREDICTION_DATE}_{HORIZON}d.json
 
     Constraint: Only trade when EV justifies risk. "No trade" is valid. Never force entries.
     Output: new_plans [{plan_id, ticker, side, qty, entry, stop, target, EV, conviction}]

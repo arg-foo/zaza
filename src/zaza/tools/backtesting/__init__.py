@@ -7,6 +7,7 @@ from mcp.server.fastmcp import FastMCP
 
 def register_backtesting_tools(mcp: FastMCP) -> None:
     """Register all backtesting tools with the MCP server."""
+    from zaza.tools.backtesting.predictions import register as register_predictions
     from zaza.tools.backtesting.risk import register as register_risk
     from zaza.tools.backtesting.scoring import register as register_scoring
     from zaza.tools.backtesting.signals import register as register_signals
@@ -16,3 +17,4 @@ def register_backtesting_tools(mcp: FastMCP) -> None:
     register_simulation(mcp)
     register_scoring(mcp)
     register_risk(mcp)
+    register_predictions(mcp)

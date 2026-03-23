@@ -134,17 +134,22 @@ Current Price: ${CURRENT} | Regime: {regime} | Catalyst Window: {binary_catalyst
 
 ---
 
-**Prediction JSON** — After generating the prediction, log it by writing a JSON file to the predictions directory for future accuracy tracking. The prediction log should include:
+**Prediction JSON** — After generating the prediction, save it via `log_prediction()` from `zaza.utils.predictions` with ALL fields:
+
+Required fields:
 - ticker, prediction_date, horizon_days, target_date, current_price
 - predicted_range: {low, mid, high} from 25th/50th/75th percentiles
 - confidence_interval: {ci_5, ci_25, ci_75, ci_95}
+- model_weights: {weighting_mode: "catalyst_dominant"|"standard", weights_used}
+- key_factors: [top factors driving the prediction]
+
+Extended fields (populate from your analysis — these enable reevaluation drift tracking):
 - catalyst_calendar: [{date, event, type, days_out, historical_reaction, priced_in, impact}]
 - catalyst_cluster: {has_cluster, events_in_cluster, cluster_dates, combined_uncertainty}
 - scenario_conditions: {bull_requires, base_assumes, bear_triggered_by}
 - short_interest: {si_pct_float, days_to_cover, squeeze_score}
 - buyback_support: {active, buyback_yield, recent_pace}
-- model_weights: {weighting_mode: "catalyst_dominant"|"standard", weights_used}
-- key_factors: [top factors driving the prediction]
+- weighting_mode: "catalyst_dominant" | "standard"
 
 ---
 
