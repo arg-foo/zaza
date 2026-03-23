@@ -18,6 +18,7 @@ from xml.etree import ElementTree as ET
 
 from mcp import ClientSession
 from mcp.client.streamable_http import streamable_http_client
+
 from order_sync.parsers import (
     TradePlan,
     _extract_text,
@@ -106,6 +107,7 @@ def cross_reference(plans: list[TradePlan], open_orders: list[dict]) -> list[dic
             "position_status": plan.position_status,
             "position_quantity": plan.position_quantity,
             "position_avg_cost": plan.position_avg_cost,
+            "prediction_file": plan.prediction_file or None,
             "order_status": order_lookup[plan.order_id]["status"]
             if plan.order_id in order_lookup
             else "UNKNOWN",
@@ -213,6 +215,8 @@ def format_output(
             plan_attrs["position_avg_cost"] = f"{plan.get('position_avg_cost', 0.0):.2f}"
 
         # Add optional attributes only if present
+        if plan.get("prediction_file") is not None:
+            plan_attrs["prediction_file"] = plan["prediction_file"]
         if plan.get("conviction") is not None:
             plan_attrs["conviction"] = plan["conviction"]
         if plan.get("ev") is not None:

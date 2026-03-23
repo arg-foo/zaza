@@ -1,6 +1,6 @@
 # CLAUDE.md
 
-Zaza is a financial research MCP server (66 tools, 11 domains) that extends Claude Code with financial data, TA, options, sentiment, macro, quant models, institutional flow, earnings, backtesting, screening, and browser automation. Claude Code provides the agent loop, LLM, and UI. Zaza adds only MCP tools.
+Zaza is a financial research MCP server (67 tools, 11 domains) that extends Claude Code with financial data, TA, options, sentiment, macro, quant models, institutional flow, earnings, backtesting, screening, and browser automation. Claude Code provides the agent loop, LLM, and UI. Zaza adds only MCP tools.
 
 ```xml
 <commands>
@@ -30,7 +30,7 @@ Zaza is a financial research MCP server (66 tools, 11 domains) that extends Clau
     ├── server.py, config.py
     ├── api/ (yfinance_client, edgar_client, reddit_client, stocktwits_client, fred_client)
     ├── cache/store.py (diskcache SQLite at ~/.zaza/cache/ with TTL per category)
-    ├── tools/ (finance/15, ta/9, options/7, sentiment/4, macro/5, quantitative/6, institutional/4, earnings/4, backtesting/4, screener/3, browser/5)
+    ├── tools/ (finance/15, ta/9, options/7, sentiment/4, macro/5, quantitative/6, institutional/4, earnings/4, backtesting/5, screener/3, browser/5)
     └── utils/ (indicators.py, models.py, sentiment.py, predictions.py)
 
   </structure>
@@ -122,7 +122,7 @@ Zaza is a financial research MCP server (66 tools, 11 domains) that extends Clau
   <rule>Mock all external APIs -- no live calls. httpx via respx, yfinance via unittest.mock.patch</rule>
   <rule>Quant tests: known inputs -> deterministic outputs. Monte Carlo: seeded RNG.</rule>
   <rule>Backtest tests: verify no look-ahead bias</rule>
-  <rule>MCP protocol tests: all 66 tools accept valid params, return valid schemas</rule>
+  <rule>MCP protocol tests: all 67 tools accept valid params, return valid schemas</rule>
   <rule>Coverage floor: 80% (pytest-cov). Timeout: 30s (pytest-timeout).</rule>
 </testing>
 ```

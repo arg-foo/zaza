@@ -9,8 +9,6 @@ from __future__ import annotations
 import xml.etree.ElementTree as ET
 from pathlib import Path
 
-import pytest
-
 from scripts.migrate_trade_plans import migrate_directory, migrate_xml
 
 # Old-schema XML for testing migration
@@ -21,6 +19,11 @@ OLD_SCHEMA_XML = """\
     <ticker>AAPL</ticker>
     <quantity>50</quantity>
   </summary>
+  <position>
+    <status>NONE</status>
+    <quantity>0</quantity>
+    <avg_cost>0.0</avg_cost>
+  </position>
   <entry>
     <strategy>support_bounce</strategy>
     <trigger>Price holds above $183.50</trigger>
@@ -69,6 +72,11 @@ NEW_SCHEMA_XML = """\
     <ticker>AAPL</ticker>
     <quantity>50</quantity>
   </summary>
+  <position>
+    <status>NONE</status>
+    <quantity>0</quantity>
+    <avg_cost>0.0</avg_cost>
+  </position>
   <order>
     <order_id>BUY-AAPL-20260224-001</order_id>
     <entry>

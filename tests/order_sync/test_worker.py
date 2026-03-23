@@ -31,6 +31,11 @@ SAMPLE_PLAN_XML = """\
     <risk_reward_ratio>1:2.5</risk_reward_ratio>
     <rationale>RSI bouncing off 38</rationale>
   </summary>
+  <position>
+    <status>NONE</status>
+    <quantity>0</quantity>
+    <avg_cost>0.0</avg_cost>
+  </position>
   <order>
     <order_id>BUY-AAPL-20260224-001</order_id>
     <entry>

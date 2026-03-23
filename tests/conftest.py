@@ -29,6 +29,9 @@ VALID_TRADE_XML = """\
     <risk_reward_ratio>1:2.5</risk_reward_ratio>
     <rationale>RSI bouncing off 38 with bullish MACD crossover</rationale>
   </summary>
+  <prediction>
+    <file>AAPL_2026-02-24_30d.json</file>
+  </prediction>
   <position>
     <status>NONE</status>
     <quantity>0</quantity>
