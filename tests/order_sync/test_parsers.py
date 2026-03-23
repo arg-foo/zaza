@@ -2,17 +2,13 @@
 
 from __future__ import annotations
 
-import pytest
-
 from order_sync.parsers import (
-    TradePlan,
     _extract_text,
     _parse_dollar_value,
     parse_open_orders,
     parse_positions,
     parse_trade_plan,
 )
-
 
 # ---------------------------------------------------------------------------
 # Fixtures
@@ -379,6 +375,77 @@ class TestParseTradePlan:
         plan = parse_trade_plan(VALID_TRADE_XML)
         assert plan is not None
         assert plan.plan_id == ""
+
+    def test_parse_trade_plan_with_prediction(self) -> None:
+        """XML with <prediction><file>...</file></prediction> parses prediction_file."""
+        xml = """\
+<trade-plan ticker="AAPL" generated="2026-03-20 14:30 UTC">
+  <summary>
+    <side>BUY</side>
+    <ticker>AAPL</ticker>
+    <quantity>50</quantity>
+    <conviction>HIGH</conviction>
+    <expected_value>+3.8%</expected_value>
+    <risk_reward_ratio>1:2.5</risk_reward_ratio>
+    <rationale>RSI bouncing off 38</rationale>
+  </summary>
+  <prediction>
+    <file>AAPL_2026-03-20_30d.json</file>
+  </prediction>
+  <position>
+    <status>NONE</status>
+    <quantity>0</quantity>
+    <avg_cost>0.0</avg_cost>
+  </position>
+  <order>
+    <order_id>BUY-AAPL-20260320-001</order_id>
+    <entry>
+      <status>PENDING</status>
+      <strategy>support_bounce</strategy>
+      <trigger>Price holds above $183.50</trigger>
+      <limit-order>
+        <type>LIMIT</type>
+        <side>BUY</side>
+        <ticker>AAPL</ticker>
+        <quantity>50</quantity>
+        <limit_price>184.00</limit_price>
+        <time_in_force>DAY</time_in_force>
+      </limit-order>
+    </entry>
+    <exit>
+      <stop-loss>
+        <limit-order>
+          <type>STOP_LIMIT</type>
+          <side>SELL</side>
+          <ticker>AAPL</ticker>
+          <quantity>50</quantity>
+          <stop_price>180.00</stop_price>
+          <limit_price>179.50</limit_price>
+          <time_in_force>DAY</time_in_force>
+        </limit-order>
+      </stop-loss>
+      <take-profit>
+        <limit-order>
+          <type>LIMIT</type>
+          <side>SELL</side>
+          <ticker>AAPL</ticker>
+          <quantity>50</quantity>
+          <limit_price>194.50</limit_price>
+          <time_in_force>DAY</time_in_force>
+        </limit-order>
+      </take-profit>
+    </exit>
+  </order>
+</trade-plan>"""
+        plan = parse_trade_plan(xml)
+        assert plan is not None
+        assert plan.prediction_file == "AAPL_2026-03-20_30d.json"
+
+    def test_parse_trade_plan_without_prediction(self) -> None:
+        """XML without <prediction> element parses prediction_file as empty string."""
+        plan = parse_trade_plan(VALID_TRADE_XML)
+        assert plan is not None
+        assert plan.prediction_file == ""
 
 
 # ---------------------------------------------------------------------------

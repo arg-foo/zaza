@@ -8,9 +8,8 @@ Two responsibilities:
 from __future__ import annotations
 
 import re
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 from xml.etree import ElementTree as ET
-
 
 # ---------------------------------------------------------------------------
 # Trade plan dataclass
@@ -38,6 +37,8 @@ class TradePlan:
     position_status: str = "NONE"  # NONE or HELD
     position_quantity: int = 0
     position_avg_cost: float = 0.0
+    # Prediction reference (optional - links to prediction JSON)
+    prediction_file: str = ""
     # Metadata (used by prompt_context, ignored by order_sync planner/executor)
     conviction: str = ""
     expected_value: str = ""
@@ -81,6 +82,14 @@ def parse_trade_plan(xml_string: str | None) -> TradePlan | None:
 
     if side_elem is None or ticker_elem is None or quantity_elem is None:
         return None
+
+    # Prediction (optional)
+    prediction = root.find("prediction")
+    prediction_file = ""
+    if prediction is not None:
+        file_elem = prediction.find("file")
+        if file_elem is not None and file_elem.text:
+            prediction_file = file_elem.text.strip()
 
     # Position (required)
     position = root.find("position")
@@ -161,6 +170,7 @@ def parse_trade_plan(xml_string: str | None) -> TradePlan | None:
         position_status=pos_status,
         position_quantity=pos_quantity,
         position_avg_cost=pos_avg_cost,
+        prediction_file=prediction_file,
         conviction=(summary.findtext("conviction") or "").strip(),
         expected_value=(summary.findtext("expected_value") or "").strip(),
         risk_reward_ratio=(summary.findtext("risk_reward_ratio") or "").strip(),
