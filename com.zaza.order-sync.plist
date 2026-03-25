@@ -11,98 +11,99 @@
     </array>
 
     <!-- DST-aware dual schedule for 9:31 AM ET weekdays -->
-    <!-- EDT (Mar-Nov): 13:31 UTC = 9:31 AM ET (runs), 14:31 UTC = 10:31 AM ET (exits) -->
-    <!-- EST (Nov-Mar): 13:31 UTC = 8:31 AM ET (exits), 14:31 UTC = 9:31 AM ET (runs) -->
+    <!-- NOTE: StartCalendarInterval uses LOCAL time (SGT +08), not UTC -->
+    <!-- EDT (Mar-Nov): 9:31 AM ET = 13:31 UTC = 21:31 SGT (runs) -->
+    <!-- EST (Nov-Mar): 9:31 AM ET = 14:31 UTC = 22:31 SGT (runs) -->
     <!-- Python time-gate in __main__.py exits early if not within 9:26-9:36 AM ET -->
     <key>StartCalendarInterval</key>
     <array>
-        <!-- Monday 13:31 UTC -->
+        <!-- Monday 21:31 SGT (EDT: 9:31 AM ET) -->
         <dict>
             <key>Weekday</key>
             <integer>1</integer>
             <key>Hour</key>
-            <integer>13</integer>
+            <integer>21</integer>
             <key>Minute</key>
             <integer>31</integer>
         </dict>
-        <!-- Monday 14:31 UTC -->
+        <!-- Monday 22:31 SGT (EST: 9:31 AM ET) -->
         <dict>
             <key>Weekday</key>
             <integer>1</integer>
             <key>Hour</key>
-            <integer>14</integer>
+            <integer>22</integer>
             <key>Minute</key>
             <integer>31</integer>
         </dict>
-        <!-- Tuesday 13:31 UTC -->
+        <!-- Tuesday 21:31 SGT (EDT: 9:31 AM ET) -->
         <dict>
             <key>Weekday</key>
             <integer>2</integer>
             <key>Hour</key>
-            <integer>13</integer>
+            <integer>21</integer>
             <key>Minute</key>
             <integer>31</integer>
         </dict>
-        <!-- Tuesday 14:31 UTC -->
+        <!-- Tuesday 22:31 SGT (EST: 9:31 AM ET) -->
         <dict>
             <key>Weekday</key>
             <integer>2</integer>
             <key>Hour</key>
-            <integer>14</integer>
+            <integer>22</integer>
             <key>Minute</key>
             <integer>31</integer>
         </dict>
-        <!-- Wednesday 13:31 UTC -->
+        <!-- Wednesday 21:31 SGT (EDT: 9:31 AM ET) -->
         <dict>
             <key>Weekday</key>
             <integer>3</integer>
             <key>Hour</key>
-            <integer>13</integer>
+            <integer>21</integer>
             <key>Minute</key>
             <integer>31</integer>
         </dict>
-        <!-- Wednesday 14:31 UTC -->
+        <!-- Wednesday 22:31 SGT (EST: 9:31 AM ET) -->
         <dict>
             <key>Weekday</key>
             <integer>3</integer>
             <key>Hour</key>
-            <integer>14</integer>
+            <integer>22</integer>
             <key>Minute</key>
             <integer>31</integer>
         </dict>
-        <!-- Thursday 13:31 UTC -->
+        <!-- Thursday 21:31 SGT (EDT: 9:31 AM ET) -->
         <dict>
             <key>Weekday</key>
             <integer>4</integer>
             <key>Hour</key>
-            <integer>13</integer>
+            <integer>21</integer>
             <key>Minute</key>
             <integer>31</integer>
         </dict>
-        <!-- Thursday 14:31 UTC -->
+        <!-- Thursday 22:31 SGT (EST: 9:31 AM ET) -->
         <dict>
             <key>Weekday</key>
             <integer>4</integer>
             <key>Hour</key>
-            <integer>14</integer>
+            <integer>22</integer>
             <key>Minute</key>
             <integer>31</integer>
         </dict>
-        <!-- Friday 13:31 UTC -->
+        <!-- Friday 21:31 SGT (EDT: 9:31 AM ET) -->
         <dict>
             <key>Weekday</key>
             <integer>5</integer>
             <key>Hour</key>
-            <integer>13</integer>
+            <integer>21</integer>
             <key>Minute</key>
             <integer>31</integer>
         </dict>
-        <!-- Friday 14:31 UTC -->
+        <!-- Friday 22:31 SGT (EST: 9:31 AM ET) -->
         <dict>
             <key>Weekday</key>
             <integer>5</integer>
             <key>Hour</key>
-            <integer>14</integer>
+            <integer>22</integer>
             <key>Minute</key>
             <integer>31</integer>
         </dict>

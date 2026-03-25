@@ -42,9 +42,9 @@ def main() -> None:
 
     if not args.dry_run and not args.force and not is_market_open_window():
         now_et = datetime.now(ET)
-        logger.info(
-            "Outside market open window (current ET: %s). Exiting.",
-            now_et.strftime("%H:%M"),
+        print(
+            f"Outside market open window (current ET: {now_et.strftime('%H:%M')}). Exiting.",
+            file=sys.stderr,
         )
         sys.exit(0)
 
