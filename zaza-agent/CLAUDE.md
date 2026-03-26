@@ -88,11 +88,12 @@
   <tool name="get_event_calendar"          query="ex-div, splits, rebalancing, lockup" />
   <tool name="get_buyback_data"            query="buyback program, shares repurchased" />
 
-  <!-- Backtesting (5) -->
+  <!-- Backtesting (6) -->
   <tool name="get_signal_backtest"         query="signal win rate, profit factor" />
   <tool name="get_strategy_simulation"     query="full strategy equity curve, CAGR" />
   <tool name="get_prediction_score"        query="past prediction accuracy" />
   <tool name="get_prediction"              query="full prediction data for a ticker" />
+  <tool name="save_prediction"             query="persist prediction JSON to disk" />
   <tool name="get_risk_metrics"            query="Sharpe, Sortino, max DD, VaR, alpha" />
 
   <!-- Screener (3) -->

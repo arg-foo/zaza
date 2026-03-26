@@ -6,6 +6,7 @@
         "run", "-i", "--rm",
         "-v", "zaza-cache:/cache",
         "-v", "/var/run/docker.sock:/var/run/docker.sock:ro",
+        "-e", "ZAZA_CACHE_DIR=/cache",
         "--env-file", ".env",
         "zaza:latest"
       ]
