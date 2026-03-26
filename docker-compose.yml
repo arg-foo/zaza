@@ -18,8 +18,10 @@ services:
       - "${ZAZA_MCP_PORT:-8100}:8100"
     volumes:
       - zaza-cache:/cache
+      - ~/.zaza/cache/predictions:/cache/predictions
       - ~/.zaza/trades:/trades
     environment:
+      - ZAZA_CACHE_DIR=/cache
       - ZAZA_TRADES_DIR=/trades
     env_file: .env
     healthcheck:
