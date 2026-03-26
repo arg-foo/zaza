@@ -134,22 +134,26 @@ Current Price: ${CURRENT} | Regime: {regime} | Catalyst Window: {binary_catalyst
 
 ---
 
-**Prediction JSON** — After generating the prediction, save it via `log_prediction()` from `zaza.utils.predictions` with ALL fields:
+**Prediction JSON** — After generating the prediction, save it via the `save_prediction` MCP tool with ALL fields:
 
-Required fields:
-- ticker, prediction_date, horizon_days, target_date, current_price
+Call: `save_prediction(ticker, horizon_days, prediction_data)` where `prediction_data` is a JSON string containing:
+
+Required keys in prediction_data:
+- current_price
 - predicted_range: {low, mid, high} from 25th/50th/75th percentiles
 - confidence_interval: {ci_5, ci_25, ci_75, ci_95}
 - model_weights: {weighting_mode: "catalyst_dominant"|"standard", weights_used}
 - key_factors: [top factors driving the prediction]
 
-Extended fields (populate from your analysis — these enable reevaluation drift tracking):
+Extended keys (populate from your analysis — these enable reevaluation drift tracking):
 - catalyst_calendar: [{date, event, type, days_out, historical_reaction, priced_in, impact}]
 - catalyst_cluster: {has_cluster, events_in_cluster, cluster_dates, combined_uncertainty}
 - scenario_conditions: {bull_requires, base_assumes, bear_triggered_by}
 - short_interest: {si_pct_float, days_to_cover, squeeze_score}
 - buyback_support: {active, buyback_yield, recent_pace}
 - weighting_mode: "catalyst_dominant" | "standard"
+
+Note: ticker, prediction_date, target_date, horizon_days, scored, actual_price are auto-populated by the tool — do not include them in prediction_data.
 
 ---
 
