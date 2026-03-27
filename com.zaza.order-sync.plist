@@ -12,9 +12,8 @@
 
     <!-- DST-aware dual schedule for 9:31 AM ET weekdays -->
     <!-- NOTE: StartCalendarInterval uses LOCAL time (SGT +08), not UTC -->
-    <!-- EDT (Mar-Nov): 9:31 AM ET = 13:31 UTC = 21:31 SGT (runs) -->
-    <!-- EST (Nov-Mar): 9:31 AM ET = 14:31 UTC = 22:31 SGT (runs) -->
-    <!-- Python time-gate in __main__.py exits early if not within 9:26-9:36 AM ET -->
+    <!-- EDT (Mar-Nov): 9:31 AM ET = 13:31 UTC = 21:31 SGT -->
+    <!-- EST (Nov-Mar): 9:31 AM ET = 14:31 UTC = 22:31 SGT -->
     <key>StartCalendarInterval</key>
     <array>
         <!-- Monday 21:31 SGT (EDT: 9:31 AM ET) -->
