@@ -8,9 +8,7 @@ PREDICTIONS_DIR.
 from __future__ import annotations
 
 import json
-import os
 import re
-import tempfile
 from datetime import date, timedelta
 from pathlib import Path
 
@@ -19,6 +17,7 @@ import structlog
 from mcp.server.fastmcp import FastMCP
 
 from zaza.config import PREDICTIONS_DIR
+from zaza.utils.predictions import _atomic_write
 
 logger = structlog.get_logger(__name__)
 
@@ -141,22 +140,7 @@ def register(mcp: FastMCP) -> None:
 
             json_bytes = orjson.dumps(data, option=orjson.OPT_INDENT_2)
 
-            fd = tempfile.NamedTemporaryFile(
-                dir=predictions_dir,
-                suffix=".tmp",
-                delete=False,
-            )
-            tmp_path = Path(fd.name)
-            try:
-                fd.write(json_bytes)
-                fd.flush()
-                os.fsync(fd.fileno())
-                fd.close()
-                tmp_path.rename(target_path)
-            except Exception:
-                fd.close()
-                tmp_path.unlink(missing_ok=True)
-                raise
+            _atomic_write(target_path, json_bytes)
 
             logger.info(
                 "prediction_saved",

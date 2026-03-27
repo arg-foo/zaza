@@ -94,6 +94,8 @@
   <tool name="get_prediction_score"        query="past prediction accuracy" />
   <tool name="get_prediction"              query="full prediction data for a ticker" />
   <tool name="save_prediction"             query="persist prediction JSON to disk" />
+  <tool name="save_prediction_revision"    query="persist revision prediction (drift update)" />
+  <tool name="get_prediction_chain"        query="original + all revisions in order" />
   <tool name="get_risk_metrics"            query="Sharpe, Sortino, max DD, VaR, alpha" />
 
   <!-- Screener (3) -->
@@ -147,7 +149,7 @@
   <priority>
     - Prediction subsumes TA + Macro + Sentiment + Options (don't duplicate)
     - Reevaluate subsumes Prediction for active plan assessment (don't run both)
-    - Reevaluate is only called in Step 2 Phase B, never for new predictions
+    - Reevaluate is only called in Step 2 Phase B; it produces revision predictions (not new originals)
     - When ambiguous, prefer the more specific agent
     - Spawn independent agents in parallel
   </priority>
@@ -209,9 +211,11 @@
 
     Phase B — For EACH active trade plan (after Phase A completes):
       - reevaluate agent (opus): receives Phase A summaries + plan XML
-        Calls 19 tools (quant, macro, catalysts, positioning) + get_prediction
-        Compares original prediction vs fresh combined analysis
+        Calls 19 tools (quant, macro, catalysts, positioning) + get_prediction_chain
+        Compares latest prediction (original or revision) vs fresh combined analysis
         Outputs drift assessment → KEEP|MODIFY|CANCEL with rationale + new levels
+        On MODIFY/CANCEL: saves a revision prediction via save_prediction_revision
+        Returns revision filename in output
 
     Classify:
       KEEP: thesis intact, levels valid, drift ON_TRACK.
