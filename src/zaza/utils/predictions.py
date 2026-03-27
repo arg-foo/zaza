@@ -26,6 +26,39 @@ from zaza.config import PREDICTIONS_DIR
 logger = structlog.get_logger(__name__)
 
 
+def _atomic_write(target_path: Path, data: bytes) -> None:
+    """Write data to target_path atomically via temp-file-then-rename.
+
+    Creates parent directories if needed, writes to a temporary file in the
+    same directory, then renames to the target path. This prevents partial
+    writes from producing corrupt files.
+
+    Args:
+        target_path: Destination file path.
+        data: Raw bytes to write.
+
+    Raises:
+        OSError: If the write or rename fails.
+    """
+    target_path.parent.mkdir(parents=True, exist_ok=True)
+    fd = tempfile.NamedTemporaryFile(
+        dir=target_path.parent,
+        suffix=".tmp",
+        delete=False,
+    )
+    tmp_path = Path(fd.name)
+    try:
+        fd.write(data)
+        fd.flush()
+        os.fsync(fd.fileno())
+        fd.close()
+        tmp_path.rename(target_path)
+    except Exception:
+        fd.close()
+        tmp_path.unlink(missing_ok=True)
+        raise
+
+
 @dataclass
 class PredictionLog:
     """Structured prediction record for logging and scoring.
@@ -62,6 +95,13 @@ class PredictionLog:
     short_interest: dict[str, Any] | None = None
     buyback_support: dict[str, Any] | None = None
     weighting_mode: str | None = None
+    # Revision fields (optional for backward compat)
+    is_revision: bool = False
+    revision_number: int = 0
+    parent_prediction: str | None = None      # filename of original prediction
+    revision_date: str | None = None          # ISO date when revision was created
+    drift_assessment: str | None = None       # MODIFY or CANCEL
+    drift_details: dict[str, Any] | None = None  # 5-dimensional drift analysis
 
 
 def log_prediction(prediction: PredictionLog) -> Path:
@@ -82,39 +122,29 @@ def log_prediction(prediction: PredictionLog) -> Path:
     predictions_dir = PREDICTIONS_DIR
     predictions_dir.mkdir(parents=True, exist_ok=True)
 
-    filename = (
-        f"{prediction.ticker}_{prediction.prediction_date}"
-        f"_{prediction.horizon_days}d.json"
-    )
+    if prediction.is_revision and prediction.revision_number > 0:
+        filename = (
+            f"{prediction.ticker}_{prediction.prediction_date}"
+            f"_{prediction.horizon_days}d_r{prediction.revision_number}.json"
+        )
+    else:
+        filename = (
+            f"{prediction.ticker}_{prediction.prediction_date}"
+            f"_{prediction.horizon_days}d.json"
+        )
     target_path = predictions_dir / filename
 
     data = asdict(prediction)
     json_bytes = orjson.dumps(data, option=orjson.OPT_INDENT_2)
 
-    # Atomic write: write to temp file in same directory, then rename
-    fd = tempfile.NamedTemporaryFile(
-        dir=predictions_dir,
-        suffix=".tmp",
-        delete=False,
+    _atomic_write(target_path, json_bytes)
+    logger.info(
+        "prediction_logged",
+        ticker=prediction.ticker,
+        date=prediction.prediction_date,
+        horizon=prediction.horizon_days,
+        path=str(target_path),
     )
-    tmp_path = Path(fd.name)
-    try:
-        fd.write(json_bytes)
-        fd.flush()
-        os.fsync(fd.fileno())
-        fd.close()
-        tmp_path.rename(target_path)
-        logger.info(
-            "prediction_logged",
-            ticker=prediction.ticker,
-            date=prediction.prediction_date,
-            horizon=prediction.horizon_days,
-            path=str(target_path),
-        )
-    except Exception:
-        fd.close()
-        tmp_path.unlink(missing_ok=True)
-        raise
 
     return target_path
 
@@ -188,6 +218,10 @@ def score_predictions(
     scored_entries: list[dict[str, Any]] = []
 
     for filepath, data in entries:
+        # Skip revision predictions — only originals are scored
+        if data.get("is_revision", False):
+            continue
+
         target_date_str = data.get("target_date", "")
         is_scored = data.get("scored", False)
         actual_price = data.get("actual_price")
@@ -214,10 +248,11 @@ def score_predictions(
                     actual_price = float(price)
                     is_scored = True
 
-                    # Update file on disk
+                    # Update file on disk (atomic to prevent corruption)
                     try:
-                        filepath.write_bytes(
-                            orjson.dumps(data, option=orjson.OPT_INDENT_2)
+                        _atomic_write(
+                            filepath,
+                            orjson.dumps(data, option=orjson.OPT_INDENT_2),
                         )
                         logger.info(
                             "prediction_scored",

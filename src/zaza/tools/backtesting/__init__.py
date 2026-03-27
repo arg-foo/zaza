@@ -10,6 +10,7 @@ def register_backtesting_tools(mcp: FastMCP) -> None:
     from zaza.tools.backtesting.predictions import register as register_predictions
     from zaza.tools.backtesting.risk import register as register_risk
     from zaza.tools.backtesting.save_prediction import register as register_save_prediction
+    from zaza.tools.backtesting.save_prediction_revision import register as register_save_prediction_revision
     from zaza.tools.backtesting.scoring import register as register_scoring
     from zaza.tools.backtesting.signals import register as register_signals
     from zaza.tools.backtesting.simulation import register as register_simulation
@@ -20,3 +21,4 @@ def register_backtesting_tools(mcp: FastMCP) -> None:
     register_risk(mcp)
     register_predictions(mcp)
     register_save_prediction(mcp)
+    register_save_prediction_revision(mcp)
