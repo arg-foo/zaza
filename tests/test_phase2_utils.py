@@ -76,6 +76,36 @@ async def test_fred_error_returns_empty(cache):
     assert result == []
 
 
+@respx.mock
+@pytest.mark.asyncio
+async def test_fred_release_dates_sends_date_range(cache):
+    """get_release_dates passes realtime_start/realtime_end to limit response size."""
+    import datetime as dt
+
+    from zaza.api.fred_client import FRED_BASE, FredClient
+
+    client = FredClient("test-key", cache)
+    route = respx.get(f"{FRED_BASE}/releases/dates").mock(
+        return_value=httpx.Response(
+            200,
+            json={
+                "release_dates": [
+                    {"release_id": 10, "release_name": "CPI", "date": "2026-04-10"},
+                ]
+            },
+        )
+    )
+    result = await client.get_release_dates(days_ahead=7)
+    assert len(result) == 1
+
+    # Verify date range params were sent
+    request = route.calls[0].request
+    today = dt.date.today().isoformat()
+    end = (dt.date.today() + dt.timedelta(days=7)).isoformat()
+    assert request.url.params["realtime_start"] == today
+    assert request.url.params["realtime_end"] == end
+
+
 # --- TA Indicator Tests ---
 
 
