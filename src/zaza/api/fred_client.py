@@ -73,14 +73,21 @@ class FredClient:
                     params={
                         "api_key": self.api_key,
                         "file_type": "json",
-                        "include_release_dates_with_no_data": "true",
+                        "include_release_dates_with_no_data": "false",
                         "realtime_start": today.isoformat(),
                         "realtime_end": end_date.isoformat(),
                     },
                 )
                 resp.raise_for_status()
                 data = resp.json()
-            releases = data.get("release_dates", [])
+            all_releases = data.get("release_dates", [])
+            # Deduplicate: keep only the earliest date per release_id
+            seen: dict[str, dict[str, Any]] = {}
+            for r in all_releases:
+                rid = r.get("release_id", "")
+                if rid not in seen:
+                    seen[rid] = r
+            releases = list(seen.values())
             self.cache.set(cache_key, "economic_calendar", releases)
             return releases
         except Exception as e:

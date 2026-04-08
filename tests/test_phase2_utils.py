@@ -104,6 +104,34 @@ async def test_fred_release_dates_sends_date_range(cache):
     end = (dt.date.today() + dt.timedelta(days=7)).isoformat()
     assert request.url.params["realtime_start"] == today
     assert request.url.params["realtime_end"] == end
+    assert request.url.params["include_release_dates_with_no_data"] == "false"
+
+
+@respx.mock
+@pytest.mark.asyncio
+async def test_fred_release_dates_deduplicates_by_release_id(cache):
+    """get_release_dates keeps only the earliest date per release_id."""
+    from zaza.api.fred_client import FRED_BASE, FredClient
+
+    client = FredClient("test-key", cache)
+    respx.get(f"{FRED_BASE}/releases/dates").mock(
+        return_value=httpx.Response(
+            200,
+            json={
+                "release_dates": [
+                    {"release_id": "10", "release_name": "CPI", "date": "2026-04-10"},
+                    {"release_id": "10", "release_name": "CPI", "date": "2026-04-15"},
+                    {"release_id": "50", "release_name": "GDP", "date": "2026-04-12"},
+                    {"release_id": "50", "release_name": "GDP", "date": "2026-04-18"},
+                    {"release_id": "99", "release_name": "PPI", "date": "2026-04-14"},
+                ]
+            },
+        )
+    )
+    result = await client.get_release_dates(days_ahead=14)
+    assert len(result) == 3
+    ids = [r["release_id"] for r in result]
+    assert sorted(ids) == ["10", "50", "99"]
 
 
 # --- TA Indicator Tests ---
