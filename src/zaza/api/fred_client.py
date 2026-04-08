@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import datetime as dt
 from typing import Any
 
 import httpx
@@ -62,6 +63,9 @@ class FredClient:
         if cached is not None:
             return cached
 
+        today = dt.date.today()
+        end_date = today + dt.timedelta(days=days_ahead)
+
         try:
             async with httpx.AsyncClient(timeout=15.0) as client:
                 resp = await client.get(
@@ -70,6 +74,8 @@ class FredClient:
                         "api_key": self.api_key,
                         "file_type": "json",
                         "include_release_dates_with_no_data": "true",
+                        "realtime_start": today.isoformat(),
+                        "realtime_end": end_date.isoformat(),
                     },
                 )
                 resp.raise_for_status()
