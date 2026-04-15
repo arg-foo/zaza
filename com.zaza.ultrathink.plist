@@ -1,0 +1,72 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+    <key>Label</key>
+    <string>com.zaza.ultrathink</string>
+
+    <key>ProgramArguments</key>
+    <array>
+        <string>/Users/zifcrypto/.zaza/scripts/ultrathink-launcher.sh</string>
+    </array>
+
+    <!-- Daily schedule in SGT (local time) -->
+    <key>StartCalendarInterval</key>
+    <array>
+        <!-- 20:30 SGT -->
+        <dict>
+            <key>Hour</key>
+            <integer>20</integer>
+            <key>Minute</key>
+            <integer>30</integer>
+        </dict>
+        <!-- 21:45 SGT -->
+        <dict>
+            <key>Hour</key>
+            <integer>21</integer>
+            <key>Minute</key>
+            <integer>45</integer>
+        </dict>
+        <!-- 22:45 SGT -->
+        <dict>
+            <key>Hour</key>
+            <integer>22</integer>
+            <key>Minute</key>
+            <integer>45</integer>
+        </dict>
+        <!-- 00:30 SGT -->
+        <dict>
+            <key>Hour</key>
+            <integer>0</integer>
+            <key>Minute</key>
+            <integer>30</integer>
+        </dict>
+        <!-- 03:00 SGT -->
+        <dict>
+            <key>Hour</key>
+            <integer>3</integer>
+            <key>Minute</key>
+            <integer>0</integer>
+        </dict>
+        <!-- 06:00 SGT -->
+        <dict>
+            <key>Hour</key>
+            <integer>6</integer>
+            <key>Minute</key>
+            <integer>0</integer>
+        </dict>
+    </array>
+
+    <key>StandardOutPath</key>
+    <string>/Users/zifcrypto/.zaza/logs/ultrathink_stdout.log</string>
+
+    <key>StandardErrorPath</key>
+    <string>/Users/zifcrypto/.zaza/logs/ultrathink_stderr.log</string>
+
+    <key>EnvironmentVariables</key>
+    <dict>
+        <key>PATH</key>
+        <string>/Users/zifcrypto/.local/bin:/usr/local/bin:/usr/bin:/bin</string>
+    </dict>
+</dict>
+</plist>
